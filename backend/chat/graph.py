@@ -36,15 +36,66 @@ class Intent(BaseModel):
     reasoning: str = Field(description="判断理由")
 
 
-def _chat_node(state: ChatState) -> dict[str, Any]:
-    """LLM 回复节点：把截至目前的所有消息交给模型，返回 assistant 消息。
+def _usage_tokens(resp) -> int:
+    """P2-K：从 LLM 响应提取 total_tokens（成本记账）。
+
+    DeepSeek 的 usage 在 usage_metadata；结构化输出（Intent 对象）可能在
+    response_metadata.token_usage，两层都试。
+    """
+    um = getattr(resp, "usage_metadata", None) or {}
+    tokens = int(um.get("total_tokens") or 0)
+    if not tokens:
+        rm = getattr(resp, "response_metadata", None) or {}
+        tokens = int((rm.get("token_usage") or {}).get("total_tokens") or 0)
+    return tokens
+
+
+async def _retrieve_chat_memories(user_id: str, query: str) -> str:
+    """P2：普通对话也注入长期记忆（摘要/语义/情节）。
+
+    之前记忆只在 exec（程序记忆）和 read（记忆意图）生效，普通闲聊不查——
+    这里补上：让「长期记忆」在对话主链路真正生效，不再只等用户主动问。
+    """
+    try:
+        from milvus_client import get_milvus_client  # lazy
+
+        mc = await get_milvus_client()
+        uid = int(user_id) if str(user_id).isdigit() else 1
+        memories = await mc.hybrid_retrieval_memories(
+            query, user_id=uid, summary_k=1, semantic_k=3, episodic_k=3, procedural_k=0
+        )
+        parts = []
+        for mtype in ("summary", "semantic", "episodic"):
+            for m in memories.get(mtype, [])[:3]:
+                if isinstance(m, dict) and m.get("content"):
+                    parts.append(m["content"])
+        return "\n".join(parts)[:800]
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+async def _chat_node(state: ChatState) -> dict[str, Any]:
+    """LLM 回复节点：历史（+ P2 记忆注入）→ 模型 → assistant 消息。
 
     关键点：state["messages"] 里已含历史（add_messages 累积），所以模型
     能看到多轮上下文——这就是最简单的「短期记忆」。
+    P2-K：普通对话也查记忆（全场景个性化）；本节点也记账 token（之前漏算）。
     """
+    memories = await _retrieve_chat_memories(
+        state.get("user_id", ""), state["messages"][-1].content
+    )
     model = build_chat_model()
-    response = model.invoke(state["messages"])
-    return {"messages": [response]}
+    msgs = state["messages"]
+    if memories:
+        sys = SystemMessage(
+            content="以下是该用户的历史记忆（辅助理解用户，不要直接复述）：\n" + memories
+        )
+        msgs = [sys, *msgs]
+    response = model.invoke(msgs)
+    return {
+        "messages": [response],
+        "tokens": state.get("tokens", 0) + _usage_tokens(response),
+    }
 
 
 def _intent_node(state: ChatState) -> dict[str, Any]:
@@ -57,7 +108,10 @@ def _intent_node(state: ChatState) -> dict[str, Any]:
     latest = state["messages"][-1]
     result = model.invoke([SystemMessage(content=INTENT_PROMPT), latest])
     logger.info("意图判断: %s (%s)", result.intent, result.reasoning)
-    return {"intent": result.intent}
+    return {
+        "intent": result.intent,
+        "tokens": state.get("tokens", 0) + _usage_tokens(result),
+    }
 
 
 def _route(state: ChatState) -> Literal["chat", "exec", "read"]:
@@ -128,7 +182,11 @@ async def _exec_node(state: ChatState) -> dict[str, Any]:
         }
     )
     reply = result.get("final") or _format_exec_result(result)
-    return {"messages": [AIMessage(content=reply)]}
+    return {
+        "messages": [AIMessage(content=reply)],
+        # P2-K：把 exec 子图内部累计的 token 带回对话状态（成本口径完整）
+        "tokens": state.get("tokens", 0) + int(result.get("tokens", 0) or 0),
+    }
 
 
 def _format_parents(parents) -> str:

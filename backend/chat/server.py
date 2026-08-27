@@ -13,12 +13,14 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 from auth import require_user
+from cost import CostTracker
+from ratelimit import RateLimiter
 from .checkpointer import create_checkpointer_cm
 from .graph import build_graph
 from .llm import build_chat_model
@@ -54,6 +56,9 @@ async def lifespan(app: FastAPI):
         app.state.graph = build_graph(checkpointer=saver)
         # P0-1a：后台记忆提取任务
         app.state.memory_task = asyncio.create_task(_memory_extraction_loop())
+        # P2-H/K：限流 + 成本记账器（Redis 连接复用）
+        app.state.limiter = RateLimiter()
+        app.state.cost = CostTracker()
         yield
         app.state.memory_task.cancel()
 
@@ -71,6 +76,20 @@ async def request_id_middleware(request, call_next):
         pass
     response.headers["X-Request-ID"] = rid
     return response
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request, call_next):
+    """P2-H：per-IP 限流（未认证洪水防线）；user 级限流在端点内做（认证后才有 user_id）。"""
+    ip = request.client.host if request.client else "unknown"
+    ok, wait = await app.state.limiter.check_ip(ip)
+    if not ok:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"请求过于频繁，请 {wait}s 后重试"},
+            headers={"Retry-After": str(wait)},
+        )
+    return await call_next(request)
 
 
 class ChatRequest(BaseModel):
@@ -94,7 +113,24 @@ async def _persist_conversation(user_id: str, thread_id: str, user_msg: str, ai_
 
 @app.post("/api/sandbox/chat")
 async def chat(req: ChatRequest, user_id: str = Depends(require_user)):
-    """对话端点。user_id 从 API Key 认证解出（不再信任请求参数）。"""
+    """对话端点。user_id 从 API Key 认证解出（不再信任请求参数）。
+
+    P2-H：per-user 限流（防单用户烧 token / 占沙箱）。
+    P2-K：请求前预算检查（超限熔断）+ 请求结束后按实际 token 记账。
+    """
+    # P2-H：per-user 限流
+    ok, wait = await app.state.limiter.check_user(user_id)
+    if not ok:
+        raise HTTPException(
+            status_code=429,
+            detail=f"请求过于频繁，请 {wait}s 后重试",
+            headers={"Retry-After": str(wait)},
+        )
+    # P2-K：预算检查（预估 2000 token；实际以流结束记账为准）
+    ok_budget, _ = await app.state.cost.check_budget(user_id, est_tokens=2000)
+    if not ok_budget:
+        raise HTTPException(status_code=429, detail="当日 token 预算已用完，请明日再试")
+
     graph = app.state.graph
     state = {
         "messages": [HumanMessage(content=req.message)],
@@ -103,10 +139,13 @@ async def chat(req: ChatRequest, user_id: str = Depends(require_user)):
     }
     config = {"configurable": {"thread_id": req.thread_id}}
     collected: list = []
+    collected_tokens: list = []  # P2-K：请求级 token 累计（流结束记账用）
 
     async def event_gen():
         try:
-            async for ev in stream_chat(graph, state, config, collect=collected):
+            async for ev in stream_chat(
+                graph, state, config, collect=collected, tokens=collected_tokens
+            ):
                 yield ev
         finally:
             # P0-1a：流结束后把对话写入 raw_conversations（用可信 user_id）
@@ -114,6 +153,9 @@ async def chat(req: ChatRequest, user_id: str = Depends(require_user)):
                 await _persist_conversation(
                     user_id, req.thread_id, req.message, collected[-1]
                 )
+            # P2-K：按实际 token 记账到 per-user 日预算
+            if collected_tokens:
+                await app.state.cost.add_usage(user_id, collected_tokens[-1])
 
     return StreamingResponse(
         event_gen(),

@@ -23,7 +23,7 @@ def _sse(data: dict) -> str:
 
 
 async def stream_chat(
-    graph, state: dict, config: dict, collect: list | None = None
+    graph, state: dict, config: dict, collect: list | None = None, tokens: list | None = None
 ) -> AsyncGenerator[str, None]:
     """把对话图的事件流翻译成 SSE 文本事件。
 
@@ -33,6 +33,7 @@ async def stream_chat(
       {"type":"done"}                            结束
 
     collect: 可选，用于收集最终 AI 回复内容（P0-1 对话入库用）。
+    tokens: 可选，P2-K 收集请求级累计 token（各节点记账后写回 state）。
     """
     yield _sse({"type": "status", "content": "thinking"})
     sent = False  # 是否已发出用户可见内容
@@ -51,6 +52,9 @@ async def stream_chat(
         elif mode == "updates":
             # exec/read 等节点返回的完整 AIMessage → 补发（若无打字机流）
             for node_name, update in data.items():
+                # P2-K：收集节点写回的 token 记账（取最终值）
+                if tokens is not None and update.get("tokens") is not None:
+                    tokens.append(int(update["tokens"]))
                 msgs = update.get("messages")
                 if msgs:
                     last = msgs[-1]

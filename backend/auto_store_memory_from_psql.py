@@ -21,7 +21,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-TOKEN_THRESHOLD = 1000  # 中间件压缩的是10000token，可根据交流频率自由调整
+TOKEN_THRESHOLD = 4000  # P2 修正：原 1000 太敏感（稍长对话就触发 LLM 提取烧钱），注释却写 10000，不一致。4000 兼顾提取及时性与成本
 MEMORY_EXTRACT_PROMPT = config.MEMORY_EXTRACT_PROMPT
 USER_PROFILE_MERGE_PROMPT = config.USER_PROFILE_MERGE_PROMPT
 

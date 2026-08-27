@@ -223,6 +223,7 @@ class MemoryManager:
                         "summary_id",
                         "importance",
                         "last_access_at",
+                        "thread_id",  # P2：更新访问时间需带 partition/必填字段
                     ],
                 )
 
@@ -244,6 +245,7 @@ class MemoryManager:
                                     "summary_id": entity.get("summary_id"),
                                     "importance": entity.get("importance"),
                                     "last_access_at": entity.get("last_access_at"),
+                                    "thread_id": entity.get("thread_id"),
                                     "score": hit["distance"],
                                 }
                             )
@@ -270,6 +272,7 @@ class MemoryManager:
                             "summary_id",
                             "importance",
                             "last_access_at",
+                            "thread_id",  # P2：同 hybrid 分支
                         ],
                     )
 
@@ -285,6 +288,7 @@ class MemoryManager:
                                     "summary_id": entity.get("summary_id"),
                                     "importance": entity.get("importance"),
                                     "last_access_at": entity.get("last_access_at"),
+                                    "thread_id": entity.get("thread_id"),
                                     "score": hit["distance"],
                                 }
                             )
@@ -366,6 +370,11 @@ class MemoryManager:
                     record = {"id": mem["id"], "last_access_at": current_timestamp}
                     if user_id is not None:
                         record["user_id"] = user_id
+                    # P2 修复：Milvus 的 thread_id 是必填字段（分区/必填校验），
+                    # upsert 不带会报 fieldSchema(thread_id) has no fieldData。
+                    # 从检索结果带出原 thread_id 写入，不再 try/except 静默吞掉。
+                    if mem.get("thread_id"):
+                        record["thread_id"] = mem["thread_id"]
                     update_data.append(record)
 
         if update_data:
@@ -434,6 +443,7 @@ class MemoryManager:
                     "content": mem.get("content"),
                     "last_access_at": mem.get("last_access_at"),
                     "summary_id": mem.get("summary_id"),
+                    "thread_id": mem.get("thread_id"),  # P2：保留，供访问时间更新
                 }
                 for mem, _ in scored_memories[:top_k]
             ]

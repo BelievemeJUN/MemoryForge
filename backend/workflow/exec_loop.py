@@ -93,7 +93,8 @@ def _execute_node(state: ExecState) -> dict[str, Any]:
     """执行：Docker 沙箱跑代码（M1 引擎），拿 stdout/stderr/退出码/超时。
 
     P0-A-2：配额按用户解析（resolve_limits），不同租户不同资源上限。
-    P0-D-1：先申请沙箱名额（全局+每用户），并发满直接拒绝，不阻塞不堆积。
+    P0-D-1/P2：先申请沙箱名额（Redis 分布式，全局+每用户），并发满直接拒绝。
+    P2：执行审计日志（谁在何时执行了什么代码 + 结果），配合 request_id 全链可查。
     """
     user_id = state.get("user_id", "")
     executor = DockerExecutor(limits=resolve_limits(user_id))
@@ -108,6 +109,16 @@ def _execute_node(state: ExecState) -> dict[str, Any]:
                 "security_blocked": False,
             }
         result = executor.run_python(state["code"])
+    # P2：沙箱执行审计（结构化 JSON 日志，request_id 由 observability 自动带上）
+    logger.info(
+        "sandbox_exec user=%s code_len=%d exit=%s timeout=%s blocked=%s dur=%.2fs",
+        user_id,
+        len(state.get("code", "")),
+        result.exit_code,
+        result.timed_out,
+        result.security_blocked,
+        result.duration,
+    )
     return {
         "stdout": result.stdout,
         "stderr": result.stderr,
