@@ -48,6 +48,21 @@ async def _memory_extraction_loop():
         await asyncio.sleep(180)  # 每 3 分钟扫一次
 
 
+async def _memory_maintenance_loop():
+    """P2：记忆库健康治理（低频低价值淘汰），每 30 分钟跑一次。
+
+    惰性 import：不拖慢 server 启动。
+    """
+    while True:
+        try:
+            from auto_store_memory_from_psql import run_prune_task  # lazy
+
+            await run_prune_task()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("记忆维护任务失败（不影响对话）: %s", e)
+        await asyncio.sleep(1800)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # M4-1：PostgreSQL checkpoint（async with 保证连接生命周期正确）
@@ -56,11 +71,14 @@ async def lifespan(app: FastAPI):
         app.state.graph = build_graph(checkpointer=saver)
         # P0-1a：后台记忆提取任务
         app.state.memory_task = asyncio.create_task(_memory_extraction_loop())
+        # P2：后台记忆健康维护（淘汰低频低价值记忆）
+        app.state.memory_maintenance = asyncio.create_task(_memory_maintenance_loop())
         # P2-H/K：限流 + 成本记账器（Redis 连接复用）
         app.state.limiter = RateLimiter()
         app.state.cost = CostTracker()
         yield
         app.state.memory_task.cancel()
+        app.state.memory_maintenance.cancel()
 
 
 app = FastAPI(title="CodeMind Chat Sandbox", version="0.3.1", lifespan=lifespan)

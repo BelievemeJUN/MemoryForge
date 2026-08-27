@@ -223,7 +223,9 @@ class MemoryManager:
                         "summary_id",
                         "importance",
                         "last_access_at",
-                        "thread_id",  # P2：更新访问时间需带 partition/必填字段
+                        "thread_id",  # P2：更新访问时间需带必填字段
+                        "created_at",  # P2：upsert 全字段带齐
+                        "vector",      # P2：向量含索引，upsert 必须带
                     ],
                 )
 
@@ -246,6 +248,8 @@ class MemoryManager:
                                     "importance": entity.get("importance"),
                                     "last_access_at": entity.get("last_access_at"),
                                     "thread_id": entity.get("thread_id"),
+                                    "created_at": entity.get("created_at"),
+                                    "vector": entity.get("vector"),
                                     "score": hit["distance"],
                                 }
                             )
@@ -273,6 +277,8 @@ class MemoryManager:
                             "importance",
                             "last_access_at",
                             "thread_id",  # P2：同 hybrid 分支
+                            "created_at",
+                            "vector",
                         ],
                     )
 
@@ -289,6 +295,8 @@ class MemoryManager:
                                     "importance": entity.get("importance"),
                                     "last_access_at": entity.get("last_access_at"),
                                     "thread_id": entity.get("thread_id"),
+                                    "created_at": entity.get("created_at"),
+                                    "vector": entity.get("vector"),
                                     "score": hit["distance"],
                                 }
                             )
@@ -367,14 +375,21 @@ class MemoryManager:
         for memories in top_k_memories.values():
             for mem in memories:
                 if "id" in mem:
-                    record = {"id": mem["id"], "last_access_at": current_timestamp}
-                    if user_id is not None:
-                        record["user_id"] = user_id
-                    # P2 修复：Milvus 的 thread_id 是必填字段（分区/必填校验），
-                    # upsert 不带会报 fieldSchema(thread_id) has no fieldData。
-                    # 从检索结果带出原 thread_id 写入，不再 try/except 静默吞掉。
-                    if mem.get("thread_id"):
-                        record["thread_id"] = mem["thread_id"]
+                    # P2 修复：Milvus upsert 会校验所有 schema 标量字段（非 auto 无默认值
+                    # 的都要提供，缺哪个报哪个：thread_id→memory_type→content 逐个暴露）。
+                    # 干脆从检索结果带齐全部字段一次写入，彻底解决。
+                    record = {
+                        "id": mem["id"],
+                        "user_id": user_id,
+                        "last_access_at": current_timestamp,
+                        "thread_id": mem.get("thread_id") or "",
+                        "memory_type": mem.get("memory_type") or "",
+                        "content": mem.get("content") or "",
+                        "summary_id": mem.get("summary_id"),
+                        "importance": mem.get("importance", 0.5),
+                        "created_at": mem.get("created_at") or current_timestamp,
+                        "vector": mem.get("vector") or [],
+                    }
                     update_data.append(record)
 
         if update_data:
@@ -384,6 +399,35 @@ class MemoryManager:
                 partial_update=True,
             )
             print(f"更新记忆访问时间结果：{res}")
+
+    async def prune_memories(
+        self,
+        user_id: int,
+        max_age_days: float = 90.0,
+        min_importance: float = 0.3,
+    ) -> int:
+        """P2：记忆库健康治理——淘汰「久未访问 + 低重要度」的记忆（LRU 近似）。
+
+        面试可讲：记忆只增不减会让检索噪声越来越大（库里全是陈年低价值记忆）。
+        这里按 last_access_at（时近性）和 importance（价值）双条件淘汰，
+        配合后台定时任务，控制记忆库规模。
+        """
+        cutoff = time.time() - max_age_days * 86400
+        expr = (
+            f"user_id == {user_id} and "
+            f"last_access_at < {cutoff} and importance < {min_importance}"
+        )
+        try:
+            res = await self.client.delete(
+                collection_name=self.collection_name, filter=expr
+            )
+            n = int(getattr(res, "delete_count", 0) or 0)
+            if n:
+                logger.info("记忆淘汰: 用户 %s 清理 %d 条低频低价值记忆", user_id, n)
+            return n
+        except Exception as e:  # noqa: BLE001
+            logger.warning("记忆淘汰失败（不影响检索）: %s", e)
+            return 0
 
     def get_the_top_k_memories(
         self,
@@ -444,6 +488,8 @@ class MemoryManager:
                     "last_access_at": mem.get("last_access_at"),
                     "summary_id": mem.get("summary_id"),
                     "thread_id": mem.get("thread_id"),  # P2：保留，供访问时间更新
+                    "created_at": mem.get("created_at"),  # P2：同上
+                    "vector": mem.get("vector"),  # P2：upsert 需带原向量
                 }
                 for mem, _ in scored_memories[:top_k]
             ]

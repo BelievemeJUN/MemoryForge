@@ -478,6 +478,33 @@ async def process_all_users_conversations(
         }
 
 
+async def run_prune_task(max_age_days: float = 90.0, min_importance: float = 0.3) -> int:
+    """P2：记忆健康维护——遍历有对话记录的用户，淘汰低频低价值记忆。"""
+    try:
+        pg_client = await get_postgresql_client()
+        if not pg_client.pool:
+            return 0
+        async with pg_client.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT DISTINCT user_id FROM raw_conversations")
+
+        from milvus_client import get_milvus_client  # lazy
+
+        milvus = await get_milvus_client()
+        total = 0
+        for row in rows:
+            total += await milvus.memory_manager.prune_memories(
+                row["user_id"],
+                max_age_days=max_age_days,
+                min_importance=min_importance,
+            )
+        if total:
+            logger.info("记忆维护: 共淘汰 %d 条低频低价值记忆", total)
+        return total
+    except Exception as e:  # noqa: BLE001
+        logger.warning("记忆维护任务失败（不影响对话）: %s", e)
+        return 0
+
+
 async def run_compression_task(model: BaseChatModel):
     """定时任务入口函数（兼容user_id参数，后台任务不抛出错误）"""
     logger.info("开始执行记忆存储任务...")

@@ -119,6 +119,18 @@ def _execute_node(state: ExecState) -> dict[str, Any]:
         result.security_blocked,
         result.duration,
     )
+    # P2/I：审计落库 PostgreSQL（同步短连接，失败只降级日志）
+    from sandbox.audit import write_audit  # lazy，避免顶层依赖 psycopg
+
+    write_audit(
+        user_id=user_id,
+        code_len=len(state.get("code", "")),
+        exit_code=result.exit_code,
+        timed_out=result.timed_out,
+        security_blocked=result.security_blocked,
+        duration=result.duration,
+        error=result.error or "",
+    )
     return {
         "stdout": result.stdout,
         "stderr": result.stderr,
