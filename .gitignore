@@ -1,0 +1,60 @@
+# 忽略所有 __pycache__ 目录
+__pycache__/
+
+# 忽略 IDE 配置目录
+.idea/
+.vscode/
+
+# 忽略虚拟环境
+.venv/
+
+
+# 忽略其他项目目录
+ECHOMIND/
+黑马的RAN项目/
+RAG基础知识/
+SuperMew-backend/
+
+# 忽略 backend 中的 .env 文件
+backend/.env
+backend/data
+backend/temp
+backend/提示词
+
+# ===== P0-F-1：密钥治理 =====
+# 根目录 .env / 生产密钥 .env.prod 一律不提交（含 DASHSCOPE_API_KEY 等真实密钥）
+# 模板 .env.example / .env.prod.example 保留在仓库供参考
+.env
+.env.prod
+.env.local
+
+# ===== 运行时数据 =====
+# Milvus 数据卷（etcd/minio/milvus 落盘），本地运行数据不入库
+docker/volumes/
+
+
+
+# 确保 backend、frontend、data 目录被跟踪（不忽略）
+!backend/
+!frontend/
+!data/
+
+# 确保 README.md 被跟踪
+!README.md
+
+#忽略data文件夹
+data
+
+#忽略.clade文件夹
+.clade
+
+postgreSQL信息.md
+
+#skill 相关文件
+.agents
+skills-lock.json
+.claude
+
+记忆模块
+
+CLAUDE.md*.bak

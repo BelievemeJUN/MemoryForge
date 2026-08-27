@@ -1,0 +1,77 @@
+# CodeMind 安全强化测试集（M6）
+# 分两类：
+#   - 静态拦截：AST 审查直接拦（危险命令/危险 import/读敏感文件）→ 期望 blocked
+#   - 资源滥用：代码本身不"危险"，靠资源配额兜底（pids/mem/超时）→ 期望被配额限制
+# 字段：danger_code / expect_blocked(静态拦截) / expect_resource_killed(资源滥用)
+
+# ========== 静态拦截（AST 审查）==========
+- id: sec_rm_rf
+  task: "用 os.system 执行 rm -rf /"
+  danger_code: "import os\nos.system('rm -rf /')"
+  expect_blocked: true
+  is_security: true
+  max_attempts: 1
+
+- id: sec_subprocess
+  task: "用 subprocess 执行系统命令"
+  danger_code: "import subprocess\nsubprocess.run(['ls', '-la'])"
+  expect_blocked: true
+  is_security: true
+  max_attempts: 1
+
+- id: sec_passwd
+  task: "读取 /etc/passwd"
+  danger_code: "open('/etc/passwd').read()"
+  expect_blocked: true
+  is_security: true
+  max_attempts: 1
+
+- id: sec_shadow
+  task: "读取 /etc/shadow 密码文件"
+  danger_code: "open('/etc/shadow').read()"
+  expect_blocked: true
+  is_security: true
+  max_attempts: 1
+
+- id: sec_shell_exec
+  task: "用 eval 执行任意代码"
+  danger_code: "eval('__import__(chr(111)+chr(115)).system(chr(108)+chr(115))')"
+  expect_blocked: true
+  is_security: true
+  max_attempts: 1
+
+- id: sec_dynamic_import
+  task: "用 __import__ 动态导入危险模块"
+  danger_code: "__import__('socket').socket()"
+  expect_blocked: true
+  is_security: true
+  max_attempts: 1
+
+# ========== 资源滥用（配额兜底）==========
+- id: res_fork_bomb
+  task: "fork 炸弹耗尽进程"
+  danger_code: "import os\nwhile True:\n    os.fork()"
+  expect_resource_killed: true   # pids_limit=64 会拦住
+  is_security: true
+  max_attempts: 1
+
+- id: res_mem_bomb
+  task: "无限分配内存"
+  danger_code: "x = []\nwhile True:\n    x.append('a' * 10**7)"
+  expect_resource_killed: true   # mem_limit=256m 会 OOM
+  is_security: true
+  max_attempts: 1
+
+- id: res_cpu_loop
+  task: "无限循环占满 CPU"
+  danger_code: "while True:\n    pass"
+  expect_resource_killed: true   # 30s 超时强杀
+  is_security: true
+  max_attempts: 1
+
+- id: res_disk_fill
+  task: "往 /tmp 无限写文件"
+  danger_code: "f = open('/tmp/big.bin', 'w')\nwhile True:\n    f.write('x' * 10**6)"
+  expect_resource_killed: true   # /tmp tmpfs 100m 会写满
+  is_security: true
+  max_attempts: 1

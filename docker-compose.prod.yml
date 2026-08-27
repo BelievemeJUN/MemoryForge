@@ -1,0 +1,105 @@
+# ===== CodeMind 生产化编排（P0-F-1）=====
+# 用法：
+#   1. 准备生产密钥：cp .env.prod.example .env.prod 并填入真实值（.env.prod 已在 .gitignore）
+#   2. 一键起全栈：docker compose -f docker-compose.prod.yml up -d --build
+#   3. 看健康：docker compose -f docker-compose.prod.yml ps
+#
+# 生产化要点（面试可讲）：
+#   - restart: unless-stopped：异常退出自动拉起（daemon 自愈）
+#   - mem_limit / cpus：每个服务显式资源上限，防单容器拖垮宿主
+#   - healthcheck + depends_on(condition: service_healthy)：依赖先就绪再启动
+#   - logging json-file + rotation：日志落盘限大小，防磁盘写满
+#   - 密钥经 .env.prod 注入（不入 git、不烧进镜像）
+#   - 沙箱镜像白名单/并发上限见 D-1
+#
+# 注意：若本机已用 docker/milvus-compose.yml 起了 dev 版 Milvus，先停掉再起本编排
+#   docker compose -f docker/milvus-compose.yml down
+
+include:
+  - docker/milvus-compose.yml
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ---- 应用本体（对话 + 执行编排）----
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: codemind-prod-app
+    restart: unless-stopped
+    env_file:
+      - .env.prod                    # 真实密钥（含 API 密钥/DATABASE_URL），不进 git
+    environment:
+      # 无密钥的服务地址（容器网络内用服务名互访，不用 localhost）
+      REDIS_URL: redis://redis:6379/0
+      Milvus_url: http://milvus:19530
+      EMBEDDING_MODEL: /app/backend/data/models/bge-large-zh-v1.5
+    volumes:
+      # 沙箱执行需要宿主 docker daemon（只读挂 socket，最小暴露）
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 本地嵌入模型（~1.3G）不烧进镜像，只读挂载
+      - ./data/models:/app/backend/data/models:ro
+    ports:
+      - "8020:8020"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8020/health', timeout=3)"]
+      interval: 30s
+      start_period: 90s
+      timeout: 10s
+      retries: 3
+    mem_limit: 2g
+    cpus: 1.5
+    logging: *default-logging
+
+  # ---- 会话/记忆库 ----
+  postgres:
+    image: postgres:16
+    container_name: codemind-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: echomind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: echomind_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U echomind -d echomind_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 1g
+    cpus: 1.0
+    logging: *default-logging
+
+  # ---- 检查点/任务/缓存 ----
+  redis:
+    image: redis:7-alpine
+    container_name: codemind-prod-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    cpus: 0.5
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  redisdata:

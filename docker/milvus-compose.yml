@@ -1,0 +1,62 @@
+# Milvus standalone 自建编排（路径 B：先配数据库）
+#
+# 说明：
+#   - 三个服务：etcd（元数据）+ minio（对象存储）+ milvus（向量库）
+#   - 资源限制版：适配本机 11G 内存（同时跑 mysql/redis/mongo/postgres/app）
+#     每个容器给了 mem_limit，Milvus 主体 4G，etcd/minio 各 512M
+#   - 数据落盘到 ./volumes/*（已在 .gitignore 建议忽略）
+#
+# 启动：docker compose -f docker/milvus-compose.yml up -d
+# 停止：docker compose -f docker/milvus-compose.yml down
+services:
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    mem_limit: 512m
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ./volumes/etcd:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    mem_limit: 512m
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"   # minio 控制台
+      - "9000:9000"   # minio API
+    volumes:
+      - ./volumes/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+
+  milvus:
+    container_name: milvus-standalone
+    # echomind 用了 partition key isolation + 内置 BM25 函数（Milvus 2.5+ 特性），
+    # 自建 2.4 兼容不了 → 用 v2.5.x
+    image: milvusdb/milvus:v2.5.4
+    mem_limit: 4g
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ./volumes/milvus:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "19530:19530"  # Milvus gRPC
+      - "9091:9091"    # Milvus metrics/health
+    depends_on:
+      - etcd
+      - minio

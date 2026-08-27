@@ -1,0 +1,33 @@
+{
+  "comment": "CodeMind 沙箱 seccomp profile（M6 深化）。默认允许 + 显式禁掉逃逸/提权关键 syscall。与 cap_drop=ALL + no-new-privileges + network=none 构成纵深防御（即便有漏洞也不能提权/改挂载/注入进程）。",
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_X86", "SCMP_ARCH_X32"],
+  "syscalls": [
+    {
+      "names": [
+        "ptrace",
+        "mount",
+        "umount",
+        "umount2",
+        "pivot_root",
+        "chroot",
+        "kexec_load",
+        "kexec_file_load",
+        "reboot",
+        "swapon",
+        "swapoff",
+        "bpf",
+        "keyctl",
+        "setns",
+        "unshare",
+        "clone3",
+        "process_vm_readv",
+        "process_vm_writev",
+        "perf_event_open",
+        "ioperm",
+        "iopl"
+      ],
+      "action": "SCMP_ACT_ERRNO"
+    }
+  ]
+}

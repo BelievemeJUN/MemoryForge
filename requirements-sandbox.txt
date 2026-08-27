@@ -1,0 +1,5 @@
+# ===== 代码沙箱 Agent 专属依赖（M1 起） =====
+# 与基础 requirements.txt 分开管理，避免污染 echomind 核心栈
+# 安装: .venv/bin/pip install -r requirements-sandbox.txt
+
+docker==7.1.0              # Docker SDK：DockerExecutor 沙箱执行引擎
