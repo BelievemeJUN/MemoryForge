@@ -22,7 +22,7 @@ with open(_CASES_PATH, encoding="utf-8") as _f:
 
 def _make_case(case):
     async def _run():
-        ex = DockerExecutor(limits=SandboxLimits(timeout=10.0))
+        ex = DockerExecutor(image="python:3.12-slim", limits=SandboxLimits(timeout=10.0))
         r = await ex.arun_python(case["danger_code"])
         if case.get("expect_blocked"):
             assert r.security_blocked, (

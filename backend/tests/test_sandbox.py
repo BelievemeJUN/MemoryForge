@@ -10,7 +10,8 @@ from sandbox.limits import SandboxLimits
 
 @pytest.fixture(scope="module")
 def ex():
-    return DockerExecutor()
+    # 显式用基础镜像：CI runner 无需本地模板镜像，聚焦沙箱引擎本身
+    return DockerExecutor(image="python:3.12-slim")
 
 
 @pytest.mark.integration
@@ -61,6 +62,6 @@ async def test_eval_blocked(ex):
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_timeout_kill():
-    short = DockerExecutor(limits=SandboxLimits(timeout=5.0))
+    short = DockerExecutor(image="python:3.12-slim", limits=SandboxLimits(timeout=5.0))
     r = await short.arun_python("while True: pass")
     assert r.timed_out

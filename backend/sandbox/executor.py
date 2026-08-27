@@ -27,13 +27,20 @@ logger = logging.getLogger(__name__)
 # P0-D-1：白名单收窄 daemon 攻击面
 #   - 镜像白名单：只允许预审过的沙箱镜像，防调用方拉任意镜像（含带宿主挂载/提权的恶意镜像）
 #   - 网络模式白名单：只允许断网（none），防意外开放网络
-_ALLOWED_IMAGES = frozenset({"python:3.12-slim"})
+_ALLOWED_IMAGES = frozenset({"python:3.12-slim", "codemind-sandbox:std"})
 _ALLOWED_NETWORK_MODES = frozenset({"none"})
 
-# P1-C：镜像 digest 锁定（内容信任，可选开启）。
-# 设置后以 `python:3.12-slim@sha256:...` 拉取，防 registry tag 被篡改（内容不可复现）。
-# 获取 digest：docker inspect --format '{{index .RepoDigests 0}}' python:3.12-slim
-_ALLOWED_IMAGE_DIGEST = os.getenv("SANDBOX_IMAGE_DIGEST", "").strip()
+# P2：默认沙箱镜像（模板镜像预装 numpy/pandas，数据分析任务开箱即用；
+# 可经 env 切回裸镜像）。
+_DEFAULT_IMAGE = os.getenv("SANDBOX_IMAGE", "codemind-sandbox:std")
+
+# P1-C/P2：镜像 digest 锁定（内容信任，按镜像分别配置，可选开启）。
+# 设置后以 `<image>@sha256:...` 拉取，防 registry tag 被篡改（内容不可复现）。
+# 获取 digest：docker inspect --format '{{index .RepoDigests 0}}' <image>
+_IMAGE_DIGESTS = {
+    "python:3.12-slim": os.getenv("SANDBOX_IMAGE_DIGEST", "").strip(),
+    "codemind-sandbox:std": os.getenv("SANDBOX_STD_IMAGE_DIGEST", "").strip(),
+}
 
 # P1-B：沙箱容器标签（用于孤儿回收/生命周期审计）
 _SANDBOX_LABEL = "codemind.sandbox=1"
@@ -71,10 +78,11 @@ class DockerExecutor:
 
     def __init__(
         self,
-        image: str = "python:3.12-slim",
+        image: str | None = None,
         limits: SandboxLimits = DEFAULT_LIMITS,
         network_mode: str = "none",
     ):
+        image = image or _DEFAULT_IMAGE  # P2：默认模板镜像，可显式指定
         # P0-D-1：白名单校验（构造期拒绝，快速失败）
         if image not in _ALLOWED_IMAGES:
             raise ValueError(f"镜像不在白名单: {image}")
@@ -92,9 +100,10 @@ class DockerExecutor:
         return self._client
 
     def _resolve_image_ref(self) -> str:
-        """P1-C：返回镜像引用；若锁定 digest 则带 @sha256:...。"""
-        if _ALLOWED_IMAGE_DIGEST:
-            return f"{self.image}@{_ALLOWED_IMAGE_DIGEST}"
+        """P1-C/P2：返回镜像引用；若该镜像锁定了 digest 则带 @sha256:...。"""
+        digest = _IMAGE_DIGESTS.get(self.image, "")
+        if digest:
+            return f"{self.image}@{digest}"
         return self.image
 
     def reap_orphans(self) -> int:
@@ -167,6 +176,14 @@ class DockerExecutor:
                     command=["/bin/sh", "/scripts/run_python.sh", "/work/main.py"],
                     detach=True,
                     network_mode=self.network_mode,           # 默认断网
+                    # P2：限制 numpy/OpenBLAS 线程数——沙箱 seccomp 禁了 clone3，
+                    # OpenBLAS 默认起 20 线程会 pthread_create EPERM 崩溃；
+                    # 单线程在受限沙箱里也更省资源、更可控。
+                    environment={
+                        "OPENBLAS_NUM_THREADS": "1",
+                        "OMP_NUM_THREADS": "1",
+                        "MKL_NUM_THREADS": "1",
+                    },
                     mem_limit=self.limits.mem_limit,
                     nano_cpus=self.limits.nano_cpus,
                     pids_limit=self.limits.pids_limit,
