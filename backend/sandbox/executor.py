@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 #   - 镜像白名单：只允许预审过的沙箱镜像，防调用方拉任意镜像（含带宿主挂载/提权的恶意镜像）
 #   - 网络模式白名单：只允许断网（none），防意外开放网络
 _ALLOWED_IMAGES = frozenset({"python:3.12-slim", "codemind-sandbox:std"})
-_ALLOWED_NETWORK_MODES = frozenset({"none"})
+# P2 可选联网：默认 none（断网）；bridge 用于「联网模式」（配合白名单代理，见 run）
+_ALLOWED_NETWORK_MODES = frozenset({"none", "bridge"})
+_PROXY_PORT = int(os.getenv("PROXY_PORT", "8888"))
 
 # P2：默认沙箱镜像（模板镜像预装 numpy/pandas，数据分析任务开箱即用；
 # 可经 env 切回裸镜像）。
@@ -80,9 +82,12 @@ class DockerExecutor:
         self,
         image: str | None = None,
         limits: SandboxLimits = DEFAULT_LIMITS,
-        network_mode: str = "none",
+        network_mode: str | None = None,
     ):
         image = image or _DEFAULT_IMAGE  # P2：默认模板镜像，可显式指定
+        # P2 可选联网：None → 读 env SANDBOX_NETWORK（none 默认 / proxy 可选联网）
+        if network_mode is None:
+            network_mode = os.getenv("SANDBOX_NETWORK", "none")
         # P0-D-1：白名单校验（构造期拒绝，快速失败）
         if image not in _ALLOWED_IMAGES:
             raise ValueError(f"镜像不在白名单: {image}")
@@ -91,6 +96,8 @@ class DockerExecutor:
         self.image = image
         self.limits = limits
         self.network_mode = network_mode
+        # P2：bridge 模式 = 可选联网（容器接入受限网络，出站走白名单代理）
+        self.proxy_enabled = network_mode == "bridge"
         self._client: Optional[docker.DockerClient] = None
 
     @property
@@ -171,7 +178,7 @@ class DockerExecutor:
             container = None
             self._maybe_reap()  # P1-B：进程内首次执行前清一次孤儿容器
             try:
-                container = self.client.containers.run(
+                run_kwargs = dict(
                     image=self._resolve_image_ref(),  # P1-C：digest 锁定
                     command=["/bin/sh", "/scripts/run_python.sh", "/work/main.py"],
                     detach=True,
@@ -204,6 +211,19 @@ class DockerExecutor:
                         _seccomp_opt(),
                     ],
                 )
+                if self.proxy_enabled:
+                    # P2 可选联网：容器经 host.docker.internal 连到宿主机白名单代理，
+                    # 所有出站走代理（CONNECT），非白名单域名被代理 403 拒绝。
+                    run_kwargs["extra_hosts"] = {
+                        "host.docker.internal": "host-gateway"
+                    }
+                    run_kwargs["environment"] = {
+                        **run_kwargs["environment"],
+                        "http_proxy": f"http://host.docker.internal:{_PROXY_PORT}",
+                        "https_proxy": f"http://host.docker.internal:{_PROXY_PORT}",
+                        "no_proxy": "localhost,127.0.0.1",
+                    }
+                container = self.client.containers.run(**run_kwargs)
             except Exception as e:  # noqa: BLE001
                 logger.exception("容器启动失败")
                 return ExecutionResult(
