@@ -1,0 +1,69 @@
+# CodeMind CI（P1-G-3）
+# 三个关注点：
+#   - lint：语法编译检查 + pytest 收集（不跑严格 ruff——项目不是 ruff-clean，
+#     深research 教训：开全量规则会把 CI 弄红，得不偿失）
+#   - 单元测试：无需外部服务，秒级
+#   - 集成测试：PG/Redis 用 GitHub Actions services（带 healthcheck），
+#     沙箱测试直接用 runner 自带的 Docker daemon（起一次性容器）
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 语法编译检查
+        run: python -m compileall -q backend
+      - name: pytest 收集检查（保证测试文件无导入错误）
+        run: |
+          pip install -q pytest pytest-asyncio
+          python -m pytest --collect-only -q
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: echomind
+          POSTGRES_PASSWORD: echomind123
+          POSTGRES_DB: echomind_db
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U echomind -d echomind_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6380:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://echomind:echomind123@localhost:5432/echomind_db?sslmode=disable
+      REDIS_URL: redis://localhost:6380/0
+      API_KEYS: ci-key:42
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 安装依赖
+        run: pip install -q -r requirements.txt -r requirements-dev.txt
+      - name: 单元测试（无需服务，秒级）
+        run: python -m pytest -m "not integration" -q
+      - name: 集成测试（Docker 沙箱 + PG/Redis services）
+        run: python -m pytest -m integration -q

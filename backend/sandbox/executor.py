@@ -30,6 +30,15 @@ logger = logging.getLogger(__name__)
 _ALLOWED_IMAGES = frozenset({"python:3.12-slim"})
 _ALLOWED_NETWORK_MODES = frozenset({"none"})
 
+# P1-C：镜像 digest 锁定（内容信任，可选开启）。
+# 设置后以 `python:3.12-slim@sha256:...` 拉取，防 registry tag 被篡改（内容不可复现）。
+# 获取 digest：docker inspect --format '{{index .RepoDigests 0}}' python:3.12-slim
+_ALLOWED_IMAGE_DIGEST = os.getenv("SANDBOX_IMAGE_DIGEST", "").strip()
+
+# P1-B：沙箱容器标签（用于孤儿回收/生命周期审计）
+_SANDBOX_LABEL = "codemind.sandbox=1"
+_REAPED = False
+
 
 # seccomp profile（M6 深化）：显式禁掉逃逸/提权 syscall
 _SECCOMP_PROFILE = os.path.join(os.path.dirname(__file__), "seccomp.json")
@@ -82,6 +91,42 @@ class DockerExecutor:
             self._client = docker.from_env()
         return self._client
 
+    def _resolve_image_ref(self) -> str:
+        """P1-C：返回镜像引用；若锁定 digest 则带 @sha256:...。"""
+        if _ALLOWED_IMAGE_DIGEST:
+            return f"{self.image}@{_ALLOWED_IMAGE_DIGEST}"
+        return self.image
+
+    def reap_orphans(self) -> int:
+        """P1-B：回收历史沙箱容器（异常残留/超时未清的一次性容器）。
+
+        所有沙箱容器带 codemind.sandbox=1 标签；进程启动时清理一次，
+        防止 daemon 崩溃后残留孤儿容器占资源。返回清理数。
+        """
+        removed = 0
+        try:
+            for c in self.client.containers.list(
+                all=True, filters={"label": _SANDBOX_LABEL}
+            ):
+                try:
+                    c.remove(force=True)
+                    removed += 1
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("孤儿容器回收失败（不影响执行）: %s", e)
+        return removed
+
+    def _maybe_reap(self) -> None:
+        """进程内只回收一次（避免每次执行都扫）。"""
+        global _REAPED
+        if _REAPED:
+            return
+        _REAPED = True
+        n = self.reap_orphans()
+        if n:
+            logger.info("启动时回收 %d 个孤儿沙箱容器", n)
+
     # ---------- 对外 API ----------
 
     async def arun_python(self, code: str) -> ExecutionResult:
@@ -115,9 +160,10 @@ class DockerExecutor:
 
             # 2. 启动一次性容器
             container = None
+            self._maybe_reap()  # P1-B：进程内首次执行前清一次孤儿容器
             try:
                 container = self.client.containers.run(
-                    image=self.image,
+                    image=self._resolve_image_ref(),  # P1-C：digest 锁定
                     command=["/bin/sh", "/scripts/run_python.sh", "/work/main.py"],
                     detach=True,
                     network_mode=self.network_mode,           # 默认断网
@@ -125,6 +171,7 @@ class DockerExecutor:
                     nano_cpus=self.limits.nano_cpus,
                     pids_limit=self.limits.pids_limit,
                     read_only=True,                           # rootfs 只读
+                    labels={"codemind.sandbox": "1"},       # P1-B：孤儿回收标记
                     # 仅 /tmp 可写且限量（Docker tmpfs 需显式 size 选项）
                     tmpfs={"/tmp": f"rw,size={self.limits.disk_limit}"},
                     volumes={

@@ -32,6 +32,10 @@ backend/提示词
 # Milvus 数据卷（etcd/minio/milvus 落盘），本地运行数据不入库
 docker/volumes/
 
+# 备份/临时文件
+*.bak
+*.tmp
+
 
 
 # 确保 backend、frontend、data 目录被跟踪（不忽略）

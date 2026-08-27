@@ -1,0 +1,4 @@
+# 开发/测试依赖（P1-G-1）
+# 安装: .venv/bin/pip install -r requirements-dev.txt
+pytest>=9.0
+pytest-asyncio>=0.24
