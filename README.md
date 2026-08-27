@@ -182,6 +182,7 @@ docker-compose.prod.yml  # 生产编排（app+PG+Redis+Milvus）
 
 ## 📄 文档
 
+- `docs/06_interview_prep.md` — **面试冲刺**：简历项目条目 + 30 秒陈述 + 高频追问三层答法
 - `docs/05_memoryforge_guide.md` — **技术详解（面试速成）**：每块关键技术的通俗讲解 + 面试话术
 - `docs/PLAN_V2.md` — 权威规划
 - `docs/01_echomind_analysis.md` / `docs/02_codemind_evolution.md` / `docs/03_production_gap.md` — 演进与差距分析（含 P0/P1/P2 执行追踪）
