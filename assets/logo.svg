@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- MemoryForge 品牌图标：记忆芯片 + 代码符号（</>） -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+  </defs>
+  <!-- 背景圆 -->
+  <circle cx="60" cy="60" r="56" fill="url(#bg)"/>
+  <!-- 芯片主体 -->
+  <rect x="30" y="30" width="60" height="60" rx="12" fill="none" stroke="#6366f1" stroke-width="5"/>
+  <rect x="38" y="38" width="44" height="44" rx="6" fill="none" stroke="#4338ca" stroke-width="2"/>
+  <!-- 芯片引脚 -->
+  <path d="M46 22v8M60 22v8M74 22v8M46 90v8M60 90v8M74 90v8M22 46h8M22 60h8M22 74h8M90 46h8M90 60h8M90 74h8" stroke="#a5b4fc" stroke-width="4" stroke-linecap="round"/>
+  <!-- 代码符号 </> -->
+  <path d="M48 50l-10 10 10 10M72 50l10 10-10 10" stroke="#c7d2fe" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 记忆亮点 -->
+  <circle cx="60" cy="66" r="3" fill="#818cf8"/>
+</svg>

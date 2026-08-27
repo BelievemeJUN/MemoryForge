@@ -2,6 +2,8 @@
 
 <div align="center">
 
+**MemoryForge** 品牌：<img src="assets/logo.svg" width="56" style="vertical-align:middle"/>
+
 **从「RAG 问答助手」演进为「代码执行 Agent」：LLM 不只回答问题，而是动手写代码、在隔离沙箱里运行、按测试自愈迭代。**
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.135%2B-009688?logo=FastAPI)](https://fastapi.tiangolo.com)

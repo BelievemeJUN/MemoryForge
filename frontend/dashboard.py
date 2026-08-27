@@ -20,7 +20,41 @@ DEFAULT_API = "http://localhost:8020"
 DEFAULT_REDIS = "redis://localhost:6380/0"
 DEFAULT_DSN = "postgresql://echomind:echomind123@localhost:5432/echomind_db?sslmode=disable"
 
-st.set_page_config(page_title="MemoryForge 演示面板", page_icon="🧠", layout="wide")
+# 品牌资源（无论 cwd 在哪都能定位）
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_LOGO_PATH = os.path.join(_PROJECT_ROOT, "assets", "logo.svg")
+
+st.set_page_config(page_title="MemoryForge · 演示面板", page_icon="🧠", layout="wide")
+
+# ---------- MemoryForge 品牌风格（自定义 CSS）----------
+st.markdown(
+    """
+    <style>
+      .mf-brand { text-align:center; padding: 8px 0 4px 0; }
+      .mf-brand h1 { color:#312e81; font-size:2.2rem; margin:0; }
+      .mf-brand p  { color:#64748b; font-size:0.95rem; margin:0; }
+      div[data-testid="stMetric"] {
+        background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:8px 10px;
+      }
+      div[data-testid="stMetric"] label { color:#64748b; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------- 品牌 Header ----------
+_brand_cols = st.columns([1, 6, 1])
+with _brand_cols[1]:
+    try:
+        st.image(_LOGO_PATH, width=64)
+    except Exception:  # noqa: BLE001  logo 缺失不阻塞面板
+        pass
+st.markdown(
+    '<div class="mf-brand"><h1>🧠 MemoryForge</h1>'
+    "<p>会写代码 · 能跑代码 · 会自我修复 · 记得住你的对话 Agent</p></div>",
+    unsafe_allow_html=True,
+)
+st.divider()
 
 # ---------- 侧边栏：连接配置 ----------
 st.sidebar.title("⚙️ 连接配置")
