@@ -151,3 +151,32 @@
 **规模与合规（P2）**：H 任务队列/限流/并发池；I 备份/审计/隐私；K 成本配额；J 前端面板。
 
 这些不是"现在必须全做"，而是按"先能安全上线、再抗规模、后补合规"的顺序推进。CodeMind 的核心能力（执行/自愈/安全/评测/记忆）已完整，上述是让它**从"能演示"走向"能上线"**的补全清单。
+
+---
+
+## 执行追踪（P0/P1 已完成，2026-08-27）
+
+### P0 上线前必做 — 全部完成 ✅
+| 项 | 落地 | 验证 |
+|---|---|---|
+| A-1 认证 | `backend/auth.py` X-API-Key → user_id，端点只信认证上下文 | 无 key/坏 key 401；好 key 落库用 key 映射值 |
+| A-2 多租户 | `resolve_limits(user_id)` 配额按用户 + TaskManager 用户命名空间 | 容器实测 user42=128MiB/32pids；租户任务互不可见 |
+| D daemon 攻击面 | 镜像/网络白名单 + 全局+每用户并发上限 | 坏镜像/坏网络构造期拒绝；并发满拒绝、释放恢复 |
+| E 可观测性 | request_id + JSON 日志 + `/health` 四依赖探活 | 头透传/自动生成；PG/Redis/Milvus/Docker 全绿 |
+| F 部署/密钥 | `backend/Dockerfile` + `docker-compose.prod.yml` + `.env.prod` 注入 | compose config 无 WARN；`.env`/`.env.prod` 已 ignore |
+| 回归 | 9 冒烟 + P0 验证 | 9/9 绿 |
+
+### P1 安全深化 — 已完成 ✅
+| 项 | 落地 | 验证 |
+|---|---|---|
+| G-1 测试套件化 | `backend/tests/` pytest 套件（16 单元 + 20 集成） | 36/36 绿 |
+| G-2 安全回归 | `security_cases.yaml` 全量自动化（双重防御断言） | 11 用例全过 |
+| G-3 CI | `.github/workflows/ci.yml`（lint + 单元 + 集成，PG/Redis services） | 待 push GitHub 验证 |
+| C-1 镜像信任 | `SANDBOX_IMAGE_DIGEST` 锁定 `python:3.12-slim@sha256:2c94...` | digest 下执行正常 |
+| B-1 生命周期 | 沙箱容器 `codemind.sandbox` 标签 + 进程内孤儿回收 | 执行前自动清理 |
+| 回归 | 原 9 冒烟 + pytest 36 | 双套全绿 |
+
+### P1 剩余 / P2（未做）
+- B 长期：gVisor/Firecracker VM 级隔离评估（容器共享宿主内核的已知边界）
+- C 长期：Trivy 镜像漏洞扫描进 CI
+- P2：H 任务队列/限流/并发池；I 备份/审计/隐私；K 成本配额；J 前端面板
