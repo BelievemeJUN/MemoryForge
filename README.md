@@ -1,488 +1,184 @@
-# EchoMind - 个性化智能问答助手
+# CodeMind —— 会写代码、能跑代码、会自我修复的对话 Agent
 
 <div align="center">
 
-**念念不忘，必有回响**
+**从「RAG 问答助手」演进为「代码执行 Agent」：LLM 不只回答问题，而是动手写代码、在隔离沙箱里运行、按测试自愈迭代。**
 
-[![GitHub](https://img.shields.io/badge/GitHub-EchoMind-blue?logo=GitHub)](https://github.com/Dreamt0511/EchoMind)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.135%2B-009688?logo=FastAPI)](https://fastapi.tiangolo.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.56%2B-FF4B4B?logo=Streamlit)](https://streamlit.io)
-[![LangChain](https://img.shields.io/badge/LangChain-1.2%2B-1C3C3C?logo=LangChain)](https://langchain.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.1%2B-1C3C3C?logo=LangGraph)](https://langchain-ai.github.io/langgraph/)
-[![Milvus](https://img.shields.io/badge/pymilvus-2.6%2B-00A4B4?logo=Milvus)](https://milvus.io)
-[![Redis](https://img.shields.io/badge/redis-7.4%2B-DC382D?logo=Redis)](https://redis.io)
-[![DashScope](https://img.shields.io/badge/DashScope-1.25%2B-FF6A00?logo=AlibabaCloud)](https://dashscope.aliyun.com)
-[![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?logo=Docker)](https://docker.com)
+[![Docker](https://img.shields.io/badge/Docker-Sandbox-2496ED?logo=Docker)](https://docker.com)
+[![Milvus](https://img.shields.io/badge/pymilvus-2.5%2B-00A4B4?logo=Milvus)](https://milvus.io)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-4169E1?logo=PostgreSQL)](https://postgresql.org)
+[![Redis](https://img.shields.io/badge/Redis-7%2B-DC382D?logo=Redis)](https://redis.io)
+[![pytest](https://img.shields.io/badge/pytest-9%2B-0A9EDC?logo=pytest)](https://pytest.org)
+[![CI](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?logo=GitHubActions)](https://github.com/features/actions)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-EchoMind 是一款基于 **FastAPI** 和 **LangChain** 构建的个性化 AI 问答助手。系统采用 **RAG（检索增强生成）** 技术，集成 **Milvus 向量数据库**与 **PostgreSQL 关系数据库**，具备**长期记忆能力**和**自定义知识库管理**功能。EchoMind 能够记住历史对话内容，自动提取并存储用户偏好与习惯，结合私有知识库检索，为用户提供**精准、连贯、个性化**的智能问答服务。
-
-**核心价值**：让 AI 真正"记住"你，而非每次对话都是初次见面。
 
 </div>
 
-## 📋 目录
+## 🎯 项目定位
 
-- [🎯 项目概述](#-项目概述)
-- [✨ 核心特性](#-核心特性)
-- [🏗️ 系统架构](#️-系统架构)
-- [🚀 快速开始](#-快速开始)
-- [📖 API 文档](#-api-文档)
-- [🔧 配置说明](#-配置说明)
-- [📁 项目结构](#-项目结构)
-- [🤝 贡献指南](#-贡献指南)
+**CodeMind 是一个「能动手的对话 Agent」**：用户说一句「用 Python 算 1 到 100 的和」，它不是背答案，而是真正走一遍 **规划 → 写代码 → 隔离沙箱运行 → 拿真实输出 → （必要时）按测试自愈修复** 的完整链路，把**真实执行结果**返回给你。
 
-## 🎯 项目概述
+项目从 echomind（RAG 个性化问答助手）演进而来：继承了其长期记忆 / 知识库能力，核心新增了 **代码执行引擎** 与 **生产级工程化**。
 
-EchoMind 是一个全功能的个性化 AI 问答系统，主要特点包括：
-- **短期记忆**：支持多轮对话，Redis缓存会话历史，保证对话连贯性。
-- **长期记忆系统**：自动提取和存储用户对话记忆，支持个性化回答
-- **知识库管理**：支持多知识库文档上传、检索和管理
-- **混合检索**：结合稠密向量检索和稀疏检索，提供准确的文档匹配
-- **实时对话**：流式响应，提供打字机效果的交互体验
-- **智能记忆**：自动识别和过滤重复记忆，保持记忆库的高效性
+## ✨ 核心能力
 
-## 项目网页文档
-[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/Dreamt0511/EchoMind)
+### 1️⃣ 对话 + 执行总图（LangGraph）
+手写 `StateGraph`（弃用 `create_agent`），四个节点职责单一：
+```
+intent（意图判断）→ chat / exec（执行子图）/ read（读知识库·记忆）
+```
+- 意图判断用 `with_structured_output` 结构化输出（intent + reasoning），鲁棒可解释
+- **执行子图**：`plan → write → execute → verify → fix` 自愈循环，带**熔断**（重试预算用尽诚实收尾，不无限循环）
 
-## 📸 界面预览
-![alt text](assets/demo.png)
+### 2️⃣ 代码沙箱（Docker 分层防御，M1/M6）
+每个任务一个**一次性容器**，用完即毁，分层隔离：
+| 层 | 措施 |
+|---|---|
+| 网络 | `--network=none` 断网 |
+| 文件 | rootfs 只读，仅 `/tmp` tmpfs 限量可写 |
+| 权限 | 非 root（`nobody`）+ `cap_drop=ALL` + `no-new-privileges` |
+| 系统 | 自定义 seccomp（禁 ptrace/mount/pivot_root 等逃逸 syscall） |
+| 资源 | 内存 / CPU / pids / 超时 watchdog 强杀 / 输出截断 |
+| 前置 | AST 静态审查（危险 import / 调用 / 路径越界） |
+| 供应链 | 镜像白名单 + digest 锁定（`python:3.12-slim@sha256:...`） |
 
+### 3️⃣ 长期记忆（继承 echomind）
+- 对话流结束后异步写入 `raw_conversations`，后台任务定时压缩提取
+- 四类记忆（摘要/语义/情节/程序）+ 用户画像，Milvus 混合检索
+- 程序性记忆注入写码提示词：**记住用户编码偏好**（P0-1b）
 
-## ✨ 核心特性
+### 4️⃣ 会话隔离（PostgreSQL checkpoint）
+- `langgraph-checkpoint-postgres` 持久化对话历史，按 `thread_id` 隔离
+- 多轮上下文自动恢复，会话互不串
 
-### 🧠 记忆系统
-- **多类型记忆**：支持摘要记忆、语义记忆、情节记忆、程序记忆和用户画像
-- **自动提取**：后台任务每3分钟自动检查并提取未压缩的对话
-- **智能过滤**：相似度高于0.9的记忆自动标记为重复并过滤
-- **记忆优化**：按主题合并碎片化记忆，确保信息完整性
+### 5️⃣ 生产化（P0/P1）
+| 维度 | 落地 |
+|---|---|
+| 认证 | `X-API-Key` → user_id（端点只信认证上下文，不信请求参数） |
+| 多租户 | 按用户配额（`QUOTA_USER_<id>_MEM/PIDS/...`）、任务命名空间隔离 |
+| 可观测 | request_id 贯穿 + JSON 单行日志 + `/health` 四依赖探活 |
+| 攻击面 | 镜像/网络白名单 + 全局/每用户并发上限 + 孤儿容器回收 |
+| 部署 | `Dockerfile` + `docker-compose.prod.yml`（restart/资源/日志/healthcheck）+ 密钥 env 注入 |
+| CI | GitHub Actions：lint + 单元 + 集成（PG/Redis services） |
 
-### 📚 知识库管理
-- **多知识库支持**：用户可创建多个知识库，分别管理不同领域的文档
-- **文档处理**：支持PDF、Word文档上传，自动分块和向量化
-- **混合检索**：结合稠密检索（语义搜索）和稀疏检索（关键词匹配）
-- **重排序机制**：使用外部API进行相关性重排序，提供最优结果
-
-### 🔍 检索系统
-- **两层降级策略**：
-  - 混合检索失败时自动降级为稠密向量检索
-  - 重排序失败时降级为RRF融合排序结果
-- **动态提示词**：根据选择的知识库动态切换系统提示词
-- **检索范围控制**："默认知识库"检索所有知识，指定知识库限定检索范围
-
-### 💬 对话系统
-- **流式响应**：实时逐token输出，提供打字机效果
-- **工具调用展示**：显示AI的思考过程和工具调用状态
-- **会话管理**：Redis缓存会话历史，保证对话连贯性
-- **实时保存**：对话内容实时异步写入PostgreSQL数据库
-
-## 🌟 技术亮点
-
-| 特性 | 技术实现 | 优势 |
-|------|----------|------|
-| **父子块混合检索** | 父块存 PostgreSQL，子块存 Milvus | 兼顾检索精度与上下文完整性 |
-| **双重降级策略** | 混合检索→稠密检索 / Rerank→RRF | 保证服务高可用 |
-| **乐观 UI 更新** | 前端立即响应 + 后台异步确认 | 流畅的用户体验 |
-| **动态提示词切换** | 默认/指定知识库不同策略 | 灵活控制回答发散度，知识库检索范围 |
-| **定时记忆压缩** | 每 3 分钟检查 Token 阈值 | 自动化长期记忆管理 |
-| **记忆分层存储** | 语义/情景/程序/摘要自动分类 | 独立管理，模拟人脑 |
-| **记忆并行检索** | 四种记忆并行查询融合排序 | 耗时降低 60% |
-| **三维智能排序** | 相似度+时近性+重要性评分 | 优先返回最相关记忆 |
-| **用户画像融合** | 新旧画像智能合并 | 持续演进不丢失 |
-| **智能记忆去重** | 向量相似度 ≥ 0.9 自动过滤 | 避免记忆库膨胀 |
-
+### 6️⃣ 测试与安全回归（P1）
+- **pytest 套件 36 用例**（16 单元 + 20 集成，全绿）+ 原 9 冒烟脚本
+- **安全回归自动化**：`security_cases.yaml` 全量攻击用例（静态拦截 + 资源滥用双重防御断言）
+- 评测四层：功能 / 自愈 / 安全 / 成本（token 记账 + bootstrap CI）
 
 ## 🏗️ 系统架构
 
-### 整体架构
-
-![alt text](assets/framework.png)
-
-## 📁 项目文件说明
-
-### 后端服务 (`backend/`)
-
-| 文件 | 功能 | 关键特性 |
-|------|------|----------|
-| `main.py` | 应用入口 | 生命周期管理、后台定时任务 |
-| `api.py` | API 路由 | RESTful 接口、文件上传、流式对话 |
-| `agent.py` | Agent 核心 | LangChain agent、动态提示词、检查点短期记忆持久化 |
-| `tools.py` | 工具集 | search_knowledge_base / get_memory / get_raw_conversation |
-| `config.py` | 配置中心 | 提示词模板、分块参数、模型配置 |
-
-### 数据层 (`backend/`)
-
-| 文件 | 功能 | 存储内容 |
-|------|------|----------|
-| `milvus_client.py` | Milvus 客户端 | 知识库子块向量、四种类型记忆 |
-| `postgresql_client.py` | PostgreSQL 客户端 | 父块文本、文件元数据、对话记录、哈希去重 |
-| `redis_cache.py` | Redis 客户端 | 用户画像缓存、对话检查点 |
-
-### 业务逻辑 (`backend/`)
-
-| 文件 | 功能 | 核心算法 |
-|------|------|----------|
-| `memory_manager.py` | 记忆管理 | 混合检索hybrid_search、综合评分、冲突检测、去重过滤 |
-| `knowledge_base_manager.py` | 知识库管理 | 父子块策略、BM25+稠密混合检索（HNSW索引算法）、RRF 融合、 |
-| `documents_process.py` | 文档处理 | PDF/Word 解析、文本分块、Rerank重排序 |
-| `hash_storage.py` | 去重存储 | SHA-256 文件级/块级去重 |
-| `auto_store_memory_from_psql.py` | 记忆提取 | LLM 提取、画像融合、定时压缩 |
-
-### 前端界面 (`frontend/`)
-
-| 文件 | 功能 | 技术特点 |
-|------|------|----------|
-| `app.py` | 主界面 | SSE 流式接收、乐观更新、骨架屏加载 |
-| `style.css` | 样式文件 | 3D 动画、响应式布局、消息气泡 |
-
-### 配置与部署
-
-| 文件 | 用途 |
-|------|------|
-| `.env.example` | 环境变量模板 |
-| `requirements.txt` | Python 依赖版本锁定 |
-
-
-#### 1. Agent 系统 (`agent.py`)
-- 基于 LangChain 构建的智能代理
-- 支持工具调用和流式响应生成
-- 集成 Redis 检查点机制，实现会话状态管理
-- 动态提示词切换，根据知识库选择调整回答策略
-
-#### 2. 工具框架 (`tools.py`)
-- `search_knowledge_base`: 知识库混合检索工具
-- `get_memory`: 多类型记忆检索工具，模型根据当前对话内容自主决策各种类型记忆需要检索的数量
-- `get_raw_conversation_by_summary_id`: 原始对话获取工具，当需要查询原始对话内容时输入summary_id获取摘要对应的原始对话内容
-
-#### 3. 记忆管理 (`auto_store_memory_from_psql.py`)
-- 后台任务自动提取对话记忆
-- 支持4种记忆类型：摘要、语义、情节、程序，多轮对话自动提取用户画像。
-- 记忆冲突检测和重复过滤
-- 用户画像智能融合更新
-
-#### 4. 知识库管理 (`knowledeg_base_manager.py`)
-- 采用父子分块策略，（父块1000字符，子块200字符）
-- 向量化存储和混合检索，RRF融合排序
-- 文件整体去重（SHA-256哈希检测），子块内容去重，避免重复存储。
-
-#### 5. 数据处理管道 (`documents_process.py`)
-- 支持PDF、Word文档处理
-- 文本分块和嵌入生成
-- 重排序文档相关性评分
+```mermaid
+flowchart LR
+    U[用户] -->|X-API-Key / SSE| API[FastAPI :8020]
+    API --> MID[request_id 中间件]
+    API --> AUTH[认证: user_id]
+    AUTH --> GRAPH[LangGraph 总图]
+    GRAPH --> INTENT[意图判断]
+    INTENT --> EXEC[执行子图 plan→write→execute→verify→fix]
+    EXEC --> SBX[Docker 沙箱<br/>分层防御]
+    INTENT --> READ[读工具: 知识库/记忆]
+    GRAPH -->|checkpoint| PG[(PostgreSQL)]
+    API -->|记忆提取| MEM[记忆压缩任务]
+    MEM --> MILVUS[(Milvus 向量库)]
+    API --> TASKS[(Redis 任务/缓存)]
+```
 
 ## 🚀 快速开始
 
 ### 环境要求
+- Python 3.12+、Docker（沙箱必需）
+- 依赖服务：PostgreSQL 16 / Redis 7 / Milvus 2.5（本仓库提供 `docker/milvus-compose.yml`）
 
-- Python 3.12+
-- PostgreSQL 14+
-- Redis 7.2+ (本项目使用 redis-stack-server 镜像)
-- Milvus 2.4+ (Milvus 云服务)
-- DashScope API Key
-
-### 安装步骤
-
-1. **克隆项目**
+### 1. 克隆并安装
 ```bash
-git clone https://github.com/Dreamt0511/EchoMind.git
-cd EchoMind
+git clone <your-repo-url> EchoMind-master
+cd EchoMind-master
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-sandbox.txt -r requirements-dev.txt
 ```
 
-2. **创建虚拟环境**
+### 2. 配置 `.env`
+参考 `.env.example`，填 `DASHSCOPE_API_KEY`（DeepSeek key）等。密钥文件已在 `.gitignore` 保护。
+
+### 3. 起依赖服务
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# 或
-.venv\Scripts\activate     # Windows
+# Milvus（etcd + minio + milvus 三件套）
+docker compose -f docker/milvus-compose.yml up -d
+# PostgreSQL / Redis 见 docker-compose.prod.yml（或本机已有实例）
 ```
 
-3. **安装依赖**
-```bash
-pip install -r requirements.txt
-```
-
-4. **配置环境变量**
-创建 `.env` 文件并配置以下参数：
-
-```env
-# ===== 大模型配置 =====
-# DashScope API Key（必填，从阿里云灵积平台获取）
-DASHSCOPE_API_KEY=your_dashscope_api_key
-
-# API 基础地址（DashScope 兼容 OpenAI 格式）
-BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-
-# Agent 主模型（推荐 qwen-plus，平衡性能与成本）
-AGENT_BASE_MODEL=qwen3.5-flash-2026-02-23
-
-# 记忆提取模型（后台任务使用，建议用小模型节省成本）
-SUMMARIZATION_MODEL=qwen-turbo
-
-# ===== 嵌入模型配置 =====
-# 文本向量化模型（用于知识库和记忆的语义检索）
-EMBEDDING_MODEL=text-embedding-v4
-
-# 向量维度（text-embedding-v4 为 1024 维）
-dense_dimension=1024
-
-# ===== Rerank 重排序配置 =====
-# 重排序模型（用于优化检索结果的相关性排序）
-RERANK_MODEL=gte-rerank-v2
-
-# 重排序 API 地址
-RERANK_URL=https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
-
-# 重排序 API Key（默认与 DASHSCOPE_API_KEY 相同）
-RERANK_API_KEY=your_dashscope_api_key
-
-# ===== Milvus 向量数据库配置 =====
-# Zilliz Cloud 服务地址（或自建 Milvus 地址）
-Milvus_url=your_milvus_url
-
-# 认证 Token（Zilliz Cloud 格式：username:password）
-Token=your_milvus_token
-
-# 知识库集合名称
-knowledge_base_collection=knowledge_base_collection
-
-# 记忆集合名称
-memory_collection=memory_collection
-
-# ===== PostgreSQL 数据库配置 =====
-# 完整连接字符串（包含用户名、密码、主机、端口、数据库名）
-DATABASE_URL=postgresql://user:pass@localhost:5432/echomind_db?sslmode=disable
-
-# 分项配置（用于程序自动创建数据库）
-user=your_db_user
-password=your_db_password
-host=localhost
-port=5432
-db_name=echomind_db
-
-# ===== Redis 配置 =====
-# Redis 连接地址（用于对话检查点存储和用户画像缓存）
-REDIS_URL=redis://localhost:6379/0
-
-# ===== 临时文件目录 =====
-# 文档上传后的临时存储路径
-TEMP_DIR=/tmp
-```
-
-5. **启动后端服务**
+### 4. 启动服务
 ```bash
 cd backend
-python main.py
-或
-uvicorn main:app --reload
+uvicorn chat.server:app --host 0.0.0.0 --port 8020
 ```
 
-6. **启动前端界面**
+### 5. 发一个对话（带认证）
 ```bash
-cd frontend
-streamlit run app.py
+curl -N -X POST http://localhost:8020/api/sandbox/chat \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: devkey1" \
+  -d '{"message": "用python计算1加到100的和", "thread_id": "t1"}'
 ```
 
-### 访问应用
+## 📖 API
 
-- **API 文档**: http://localhost:8000/docs
-- **Web 界面**: http://localhost:8501
+| 端点 | 说明 |
+|---|---|
+| `POST /api/sandbox/chat` | 对话（SSE 流式）；需 `X-API-Key`；返回 `status/token/done` 事件 |
+| `GET /health` | 依赖探活（PG/Redis/Milvus/Docker），无需认证 |
 
-## 📖 API 文档
+认证：`X-API-Key` 头 → user_id（见 `.env` 的 `API_KEYS=key:user,key:user`）。
 
-### 核心端点
+## 🧪 测试
 
-
-#### 对话接口
-```http
-GET /chat_with_agent/stream
-Parameters:
-- query: 用户消息
-- knowledge_base_id: 知识库ID
-- user_id: 用户ID
-Returns: 流式文本响应
+```bash
+# pytest 套件（单元 + 集成，需 Docker/Redis/PG 在线）
+./.venv/bin/python -m pytest -q          # 36 用例
+# 原冒烟脚本回归
+./backend/test/run_all.sh                # 9/9
 ```
 
-#### 知识库管理
-```http
-POST /knowledge-bases                    # 创建知识库
-DELETE /knowledge-bases/{id}            # 删除知识库
-GET /knowledge-bases                    # 获取用户知识库列表
-GET /knowledge-bases/{id}/files         # 获取知识库文件列表
-```
+## 📦 生产部署
 
-#### 文档管理
-```http
-POST /document_upload                    # 上传文档
-DELETE /knowledge-bases/{id}/documents/{hash}  # 删除文档
-```
-
-## 🔧 配置说明
-
-### 记忆提取配置
-
-记忆提取通过 LLM 根据对话内容动态评估重要性，评分标准在提示词中定义：
-
-| 记忆类型 | 评分范围 | 评估依据 |
-|----------|----------|----------|
-| 语义记忆 | 0.1-1.0 | 事实稳定性、知识通用性、用户关联度 |
-| 情节记忆 | 0.1-1.0 | 事件重要性、时间敏感性、与用户目标关联 |
-| 程序记忆 | 0.1-1.0 | 方法复用性、任务频率、执行效果 |
-| 摘要记忆 | 0.1-1.0 | 对话信息密度、关键决策点、主题连贯性 |
-
-**基础评分参考**：
-- 0.8-0.9：个人身份、核心价值观、重大决定
-- 0.7-0.8：职业信息、学习目标、重要偏好
-- 0.6-0.7：工作相关知识、技能学习、待办任务
-- 0.3-0.5：日常对话、临时信息
-- 0.1-0.3：闲聊、一次性信息
-
-**配置方式**：修改 `config.py` 中的 `MEMORY_EXTRACT_PROMPT` 提示词模板。
-
-### 记忆检索配置
-
-记忆检索采用综合评分算法，从三个维度评估记忆相关性：
-
-| 评分维度 | 权重 | 说明 |
-|----------|------|------|
-| 语义相似度 | 45% | 向量相似度，匹配问题与记忆内容 |
-| 访问时间 | 25% | 最近访问的记忆得分更高（每小时衰减 0.5%） |
-| 重要性评分 | 30% | LLM 提取时赋予的重要性（0-1 分） |
-
-**记忆类型权重系数**：
-
-| 类型 | 权重 | 说明 |
-|------|------|------|
-| 语义记忆 | 1.3 | 事实知识，优先级最高 |
-| 程序记忆 | 1.2 | 方法流程，优先级较高 |
-| 情节记忆 | 1.0 | 历史事件，标准优先级 |
-| 摘要记忆 | 0.7 | 对话摘要，优先级较低 |
-
-**配置位置**：`backend/memory_manager.py` 中的 `get_the_top_k_memories` 方法。
-
-### 文档分块配置
-```python
-# config.py
-parent_chunk_size = 1000        # 父块大小
-parent_chunk_overlap = 200      # 父块重叠
-child_chunk_size = 200          # 子块大小
-child_chunk_overlap = 50        # 子块重叠
-```
-
-### Redis TTL配置
-```python
-TTL_CONFIG = {
-    "default_ttl": 60,          # 60分钟后过期
-    "refresh_on_read": True     # 读取时刷新TTL
-}
+```bash
+cp .env.prod.example .env.prod   # 填真实密钥
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps   # 6 服务，全部 healthcheck
 ```
 
 ## 📁 项目结构
 
 ```
-EchoMind/
-├── backend/
-|   |── tests/                   # 测试文件夹
-│   ├── agent.py                 # langchian智能代理
-│   ├── api.py                   # FastAPI路由定义
-│   ├── main.py                  # 应用入口
-│   ├── tools.py                 # 工具函数集合
-│   ├── config.py                # 系统配置
-│   ├── schemas.py               # Pydantic数据模型
-│   ├── documents_process.py     # 文档处理管道
-│   ├── auto_store_memory_from_psql.py  # 记忆提取后台任务
-│   ├── milvus_client.py         # Milvus客户端
-│   ├── postgresql_client.py     # PostgreSQL客户端
-│   ├── redis_cache.py           # Redis缓存管理
-│   └── hash_storage.py          # 文件哈希管理
-├── frontend/
-│   ├── app.py                   # Streamlit前端应用
-│   └── style.css                # 前端样式
-├── requirements.txt             # Python依赖
-├── .env                         # 环境变量配置
-└── README.md                    # 项目文档
+backend/
+├── chat/            # FastAPI 服务、LangGraph 总图、流式、checkpoint、LLM
+├── workflow/        # 执行子图（plan→write→execute→verify→fix + 自愈熔断）
+├── sandbox/         # Docker 沙箱（executor/security/limits/concurrency/seccomp）
+├── verifier/        # 输出比对（exact/fuzzy/float）
+├── tasks/           # 任务状态机（Redis，多租户命名空间）
+├── evals/           # 评测四层 + 安全用例
+├── tests/           # pytest 套件（36 用例）
+├── test/            # 冒烟脚本（run_all.sh）
+├── auth.py          # API Key 认证
+├── observability.py # JSON 日志 + request_id
+└── health.py        # 依赖探活
+docs/                # PLAN_V2 + 分析文档（01/02/03）+ 执行追踪
+docker/              # Milvus 编排
+docker-compose.prod.yml  # 生产编排（app+PG+Redis+Milvus）
+.github/workflows/ci.yml # CI
 ```
 
-## 🔄 数据流
+## 🗺️ 路线图（已执行）
 
-### 对话流程
-```
-用户输入 → FastAPI接收 → Agent处理 → 工具调用 → 
-  ├→ 记忆检索 (Milvus + PostgreSQL)
-  ├→ 知识库搜索 (Milvus + PostgreSQL + 重排序)
-  └→ LLM响应生成 → 流式返回
-```
+- **M0-M6**：环境 → 沙箱 → 对话+执行 → 自愈 → 会话隔离+任务 → 评测 → seccomp+安全评测
+- **P0（上线前）**：认证/多租户、daemon 攻击面、部署/密钥、可观测性 ✅
+- **P1（安全深化）**：pytest 套件化、安全回归、CI、镜像 digest 锁定、孤儿回收 ✅
+- **P2（规模/合规）**：任务队列/限流/并发池、备份/审计/隐私、成本配额、前端面板（待做）
 
-### 记忆提取流程
-```
-对话存储 → PostgreSQL (summary_id=NULL) → 后台任务检查 → 
-Token数量超过阈值 → 记忆提取 → 冲突检测 → 
-用户画像融合 → 存储到Milvus和PostgreSQL
-```
+## 📄 文档
 
-### 文档处理流程
-```
-文档上传 → 文件去重检查 → 临时存储 → 后台处理 → 
-文档解析 → 文本分块 → 向量化 → 
-存储到Milvus(子块) + PostgreSQL(父块)
-```
-
-## 🚀 性能优化
-
-### 已知性能考虑
-1. **多数据库往返**：每次请求涉及PostgreSQL、Redis、Milvus多次查询
-2. **内存检索**：涉及3种不同类型记忆的并行搜索
-3. **知识库搜索**：包含向量搜索、PostgreSQL查询和重排序
-4. **Redis连接**：当前为每个请求创建新连接，建议实现连接池
-5. **耗时分析**：当前数据检索时间约为2-3秒，主要耗时在API请求上，问题嵌入1秒左右，重排序0.8-1.2秒。为降低重复查询延迟，已在提示词中规定相关性问题利用上下文回答。
-
-### 优化策略
-- 优化文件上传处理方式，可考虑使用文件存储（如S3、O3、Google Cloud Storage等）
-- 实现Redis连接池
-- 缓存用户画像减少PostgreSQL查询（已实现）
-- 批量数据库操作（已实现）
-- 延迟加载非关键记忆
-- 监控生产环境中的时间日志
-
-## 🤝 贡献指南
-
-我们欢迎所有形式的贡献！欢迎提交Pull Request或Issue。
-
-### 开发流程
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
-
-### 代码规范
-- 遵循 PEP 8 代码规范，类名采用驼峰命名法，函数名采用下划线命名法。
-- 为新功能添加适当的测试
-- 更新相关文档
-- 保持代码注释的清晰和完整
-
-## 📞 联系方式
-
-- **项目维护者**: Dreamt
-- **邮箱**: [mochenge@163.com](mailto:your-email@example.com)
-- **GitHub**: [@Dreamt0511](https://github.com/Dreamt0511)
-
-## 🙏 致谢
-
-感谢以下开源项目和框架的支持：
-- [SuperMew](https://github.com/icey1287/SuperMew)
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [LangChain](https://python.langchain.com/)
-- [LangGraph](https://github.com/langchain-ai/langgraph)
-- [Milvus](https://milvus.io/)
-- [Streamlit](https://streamlit.io/)
-- [DashScope](https://dashscope.aliyun.com/)
-
----
-
-<div align="center">
-
-**[🔝 返回顶部](#echomind---个性化智能问答助手)**
-
-Made with ❤️ by Dreamt | EchoMind
-
-</div>
+- `docs/PLAN_V2.md` — 权威规划
+- `docs/01_echomind_analysis.md` / `docs/02_codemind_evolution.md` / `docs/03_production_gap.md` — 演进与差距分析（含 P0/P1 执行追踪）
