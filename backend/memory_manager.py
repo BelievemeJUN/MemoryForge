@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 # 加载环境变量
 load_dotenv()
 
+# P2 设计优化：记忆访问时间更新做 Redis 节流。
+# 问题：Milvus upsert 每次检索都要全字段（含 1024 维向量）写回，高频检索写放大严重。
+# 方案：Redis 记录每条记忆的最近触摸时间，同一记忆在 _TOUCH_TTL 秒内只 upsert 一次。
+_TOUCH_TTL = int(os.getenv("MEM_TOUCH_THROTTLE", "60"))
+
+_redis_client = None
+
+
+def _get_redis():
+    """模块级 Redis 连接缓存（server 单事件循环下安全；异常时重建）。"""
+    global _redis_client
+    if _redis_client is None:
+        import redis.asyncio as aioredis
+
+        _redis_client = aioredis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6380/0")
+        )
+    return _redis_client
+
 
 class MemoryManager:
     """记忆管理器 - 负责记忆的初始化、存储、更新、检索"""
@@ -364,41 +383,69 @@ class MemoryManager:
     async def update_memory_last_access_time(
         self, top_k_memories: Dict[str, List[Dict]], user_id: int | None = None
     ):
-        """更新记忆的最后访问时间。
+        """更新记忆的最后访问时间（P2：Redis 节流 + Milvus upsert）。
 
-        注意：Milvus 分区键(user_id)字段在 upsert 时必须带上，否则报
-        fieldSchema(user_id) has no corresponding fieldData（自建 Milvus 暴露的 bug）。
+        设计（面试可讲）：
+          - Milvus 的 upsert 每次检索都要全字段（含 1024 维向量）写回，高频检索写放大严重；
+          - 这里先用 Redis 记录触摸时间：同一记忆在 _TOUCH_TTL(默认 60s) 内只 upsert 一次，
+            写放大降一个数量级；Redis 不可用时直接 upsert（保底，功能不丢）。
+          - upsert 时带齐 Milvus 必填字段（thread_id/memory_type/content/created_at/vector…），
+            避免 Milvus 逐个报 fieldSchema 缺字段。
         """
-        current_timestamp = int(time.time())
-        update_data = []
+        if user_id is None:
+            return
+        now = int(time.time())
+        redis = None
+        try:
+            redis = _get_redis()
+        except Exception:  # noqa: BLE001
+            redis = None
 
+        to_update = []
         for memories in top_k_memories.values():
             for mem in memories:
-                if "id" in mem:
-                    # P2 修复：Milvus upsert 会校验所有 schema 标量字段（非 auto 无默认值
-                    # 的都要提供，缺哪个报哪个：thread_id→memory_type→content 逐个暴露）。
-                    # 干脆从检索结果带齐全部字段一次写入，彻底解决。
-                    record = {
-                        "id": mem["id"],
-                        "user_id": user_id,
-                        "last_access_at": current_timestamp,
-                        "thread_id": mem.get("thread_id") or "",
-                        "memory_type": mem.get("memory_type") or "",
-                        "content": mem.get("content") or "",
-                        "summary_id": mem.get("summary_id"),
-                        "importance": mem.get("importance", 0.5),
-                        "created_at": mem.get("created_at") or current_timestamp,
-                        "vector": mem.get("vector") or [],
-                    }
-                    update_data.append(record)
+                if "id" not in mem:
+                    continue
+                mid = str(mem["id"])
+                if redis is not None:
+                    try:
+                        last = await redis.hget(f"mem_touch:{user_id}", mid)
+                        if last is not None and now - int(last) < _TOUCH_TTL:
+                            continue  # 节流：60s 内已更新过，跳过本次写放大
+                        pipe = redis.pipeline()
+                        pipe.hset(f"mem_touch:{user_id}", mid, now)
+                        pipe.expire(f"mem_touch:{user_id}", _TOUCH_TTL * 10)
+                        await pipe.execute()
+                    except Exception:  # noqa: BLE001
+                        pass  # Redis 抖动则不节流，直接 upsert 保底
+                to_update.append(mem)
 
-        if update_data:
-            res = await self.client.upsert(
-                collection_name=self.collection_name,
-                data=update_data,
-                partial_update=True,
+        if not to_update:
+            return
+
+        update_data = []
+        for mem in to_update:
+            update_data.append(
+                {
+                    "id": mem["id"],
+                    "user_id": user_id,
+                    "last_access_at": now,
+                    "thread_id": mem.get("thread_id") or "",
+                    "memory_type": mem.get("memory_type") or "",
+                    "content": mem.get("content") or "",
+                    "summary_id": mem.get("summary_id"),
+                    "importance": mem.get("importance", 0.5),
+                    "created_at": mem.get("created_at") or now,
+                    "vector": mem.get("vector") or [],
+                }
             )
-            print(f"更新记忆访问时间结果：{res}")
+
+        res = await self.client.upsert(
+            collection_name=self.collection_name,
+            data=update_data,
+            partial_update=True,
+        )
+        logger.info("更新记忆访问时间（节流后 %d 条）: %s", len(update_data), res)
 
     async def prune_memories(
         self,

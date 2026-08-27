@@ -65,4 +65,4 @@ async def stream_chat(
                     if collect is not None and isinstance(last, AIMessage) and last.content:
                         collect.append(last.content)
 
-    yield _sse({"type": "done"})
+    yield _sse({"type": "done", "tokens": tokens[-1] if tokens else 0})
