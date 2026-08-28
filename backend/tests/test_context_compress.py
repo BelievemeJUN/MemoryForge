@@ -20,7 +20,10 @@ async def test_no_compress_under_threshold():
 
 
 @pytest.mark.asyncio
-async def test_no_remove_without_ids():
-    # 消息无 id（新构造未入 checkpoint）→ RemoveMessage 需要 id，跳过
-    msgs = [HumanMessage(content="x") for _ in range(25)]
+async def test_skip_msgs_without_id():
+    class NoId:
+        content = "x"
+
+    # LangChain 消息通常自动带 id；这里用无 id 属性的对象验证跳过逻辑
+    msgs = [NoId() for _ in range(25)]
     assert await _compress_node({"messages": msgs}) == {}
