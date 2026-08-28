@@ -36,7 +36,8 @@ def run_code_with_tests(
     executor: Optional[DockerExecutor] = None,
 ) -> TestResult:
     """在沙箱执行代码并跑 hidden tests，返回分类结果。"""
-    executor = executor or DockerExecutor()
+    # 默认用基础镜像（轻量稳定）；模板镜像由端到端/独立测试验证
+    executor = executor or DockerExecutor(image="python:3.12-slim")
 
     # 1. 先跑一次沙箱拿 stdout（多个 test 共用一次执行，省容器开销）
     result = executor.run_python(code)
