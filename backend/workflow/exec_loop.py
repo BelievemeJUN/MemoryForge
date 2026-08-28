@@ -12,7 +12,7 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
-from chat.llm import build_chat_model
+from chat.model_router import build_model
 from sandbox.concurrency import sandbox_slot
 from sandbox.executor import DockerExecutor
 from sandbox.limits import resolve_limits
@@ -61,8 +61,8 @@ def _start_router(state: ExecState) -> Literal["plan", "execute"]:
 
 
 def _plan_node(state: ExecState) -> dict[str, Any]:
-    """规划：LLM 给出实现方案（不进沙箱，省资源）。"""
-    model = build_chat_model()
+    """规划：LLM 给出实现方案（不进沙箱，省资源）。P2 模型路由：按复杂度选模型。"""
+    model = build_model(state["task"])
     resp = model.invoke(
         [SystemMessage(content=PLAN_PROMPT), HumanMessage(content=state["task"])]
     )
@@ -77,8 +77,9 @@ def _write_node(state: ExecState) -> dict[str, Any]:
     """写码：LLM 根据方案生成完整 Python 代码。
 
     P0-1b：若检索到用户编码偏好（程序性记忆），注入提示词做个性化。
+    P2 模型路由：按复杂度选模型。
     """
-    model = build_chat_model()
+    model = build_model(state["task"])
     prefs_block = ""
     if state.get("prefs"):
         prefs_block = f"\n\n用户编码偏好（请尽量遵循）：\n{state['prefs']}"
@@ -141,17 +142,45 @@ def _execute_node(state: ExecState) -> dict[str, Any]:
     }
 
 
-def _verify_node(state: ExecState) -> dict[str, Any]:
-    """验证：基于 execute 的 stdout 做确定性比对，并准备通过/熔断文案。
+async def _verify_node(state: ExecState) -> dict[str, Any]:
+    """验证：双通道路由（P2）。
 
-    关键：不重复跑沙箱——用 execute 已经产出的 stdout/exit_code/timed_out。
+    路由逻辑（面试可讲）：
+      - 有 hidden tests → 确定性比对（exact/fuzzy/float）；
+      - 无 tests 且 goal_mode（目标型任务，无显式期望输出）→ LLM-as-judge；
+      - 无 tests 非 goal_mode（对话场景）→ 直接展示执行结果（保持快）。
     """
     attempts = state.get("attempts", 1)
     max_attempts = state.get("max_attempts", 3)
 
-    # 没有 hidden tests → 对话场景，直接展示执行结果（等同 M2-4）
-    if not state.get("tests"):
+    # 对话场景：直接展示（无验证，保持快）
+    if not state.get("tests") and not state.get("goal_mode"):
         return {"passed": True, "attempts": attempts, "final": _format_output(state)}
+
+    # 目标模式：LLM-as-judge 判定目标完成度（理由喂回 fix 自愈，复用熔断）
+    if not state.get("tests") and state.get("goal_mode"):
+        from verifier.judge import llm_judge  # lazy
+
+        judge_model = build_model(state["task"])
+        passed, reason = await llm_judge(
+            judge_model, state["task"], state.get("plan", ""),
+            state.get("stdout", ""), state.get("stderr", ""),
+        )
+        logger.info("目标模式 judge: passed=%s (%s)", passed, reason[:60])
+        if passed:
+            return {
+                "passed": True, "attempts": attempts,
+                "final": (
+                    f"✅ 目标完成（第 {attempts} 轮）\n\n"
+                    f"**运行输出：**\n```\n{state.get('stdout', '').rstrip()}\n```"
+                ),
+            }
+        if attempts >= max_attempts:
+            return {
+                "passed": False, "attempts": attempts,
+                "final": f"❌ 经过 {attempts} 轮仍未完成目标（已熔断）\n\n最后理由：{reason}",
+            }
+        return {"passed": False, "attempts": attempts, "feedback": reason}
 
     # 确定性分类
     if state.get("timed_out"):
@@ -206,8 +235,9 @@ def _fix_node(state: ExecState) -> dict[str, Any]:
 
     硬计数：attempts 由状态机控制并加 1，超过预算在 verify 熔断——
     不依赖 LLM 自觉（deepresearch 教训：软约束会被无视）。
+    P2 模型路由：按复杂度选模型。
     """
-    model = build_chat_model()
+    model = build_model(state["task"])
     prompt = FIX_PROMPT.format(
         task=state["task"], code=state["code"], feedback=state["feedback"]
     )

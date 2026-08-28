@@ -29,3 +29,5 @@ class ExecState(TypedDict, total=False):
     prefs: str              # 用户程序性记忆（编码偏好），由 chat 图检索后传入
     # ---- P0-A-2 多租户 ----
     user_id: str            # 请求用户（由 chat 图从认证上下文传入，用于解析配额）
+    # ---- P2 目标模式（LLM-as-judge 验证）----
+    goal_mode: bool         # 无显式期望输出的目标型任务，用 judge 判定完成度

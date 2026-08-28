@@ -43,8 +43,9 @@ def show(result) -> str:
 
 
 async def main():
-    ex = DockerExecutor()
-    short = DockerExecutor(limits=SandboxLimits(timeout=5.0))
+    # 显式用基础镜像：冒烟测沙箱引擎本身，轻量稳定（模板镜像走端到端验证）
+    ex = DockerExecutor(image="python:3.12-slim")
+    short = DockerExecutor(image="python:3.12-slim", limits=SandboxLimits(timeout=5.0))
 
     print("=== 1. 正常代码 ===")
     r = await ex.arun_python("print('hello sandbox')\nprint(1 + 1)")

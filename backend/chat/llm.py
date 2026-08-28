@@ -10,10 +10,13 @@ from langchain_openai import ChatOpenAI
 load_dotenv()
 
 
-def build_chat_model() -> ChatOpenAI:
-    """构建对话模型（DeepSeek OpenAI 兼容接口）。"""
+def build_chat_model(model: str | None = None) -> ChatOpenAI:
+    """构建对话模型（DeepSeek OpenAI 兼容接口）。
+
+    model 可显式指定（模型路由用）；None 时用 env AGENT_BASE_MODEL。
+    """
     return ChatOpenAI(
-        model=os.getenv("AGENT_BASE_MODEL", "deepseek-chat"),
+        model=model or os.getenv("AGENT_BASE_MODEL", "deepseek-chat"),
         openai_api_key=os.getenv("DASHSCOPE_API_KEY"),
         openai_api_base=os.getenv("BASE_URL", "https://api.deepseek.com"),
         temperature=0.3,

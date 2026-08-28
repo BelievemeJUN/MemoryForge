@@ -165,9 +165,27 @@ async def _retrieve_user_prefs(user_id: str, task: str) -> str:
         return ""
 
 
+def _is_goal_task(task: str) -> bool:
+    """P2：判断是否目标型任务（无显式期望输出，需 LLM-as-judge 验证）。
+
+    启发式：含目标性动词（实现/写一个/优化/爬虫/分析…）且不含明确输出要求
+    （输出/结果/等于/应该是/只返回）。
+    面试可讲：这就是「验证路由」的第一跳——能给出明确期望的走确定性验证，
+    目标型的走 judge，各取所长。
+    """
+    goal_keywords = ("实现", "写一个", "写个", "优化", "重构", "爬虫", "分析", "开发", "完成")
+    if not any(k in task for k in goal_keywords):
+        return False
+    explicit = ("输出", "结果", "等于", "应该是", "期望", "只返回")
+    return not any(k in task for k in explicit)
+
+
 async def _exec_node(state: ChatState) -> dict[str, Any]:
-    """M2-4/M3/P0-1b：用户请求交给执行子图（plan→write→execute→verify→fix）。
-    对话场景无 hidden test → verify 直接展示执行结果；检索编码偏好做个性化。"""
+    """M2-4/M3/P0-1b/P2：用户请求交给执行子图（plan→write→execute→verify→fix）。
+
+    对话场景无 hidden test：verify 走「路由」——目标型任务（goal_mode）用 LLM-as-judge
+    判定完成度并自愈，否则直接展示执行结果。检索编码偏好做个性化。
+    """
     from workflow.exec_loop import get_exec_graph  # lazy，避免顶层互相依赖
 
     task = state["messages"][-1].content
@@ -179,6 +197,7 @@ async def _exec_node(state: ChatState) -> dict[str, Any]:
             "tests": [],
             "max_attempts": 3,
             "user_id": state.get("user_id", ""),  # P0-A-2：透传用户供配额解析
+            "goal_mode": _is_goal_task(task),     # P2：目标型任务 → judge 验证
         }
     )
     reply = result.get("final") or _format_exec_result(result)

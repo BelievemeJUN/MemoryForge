@@ -7,6 +7,7 @@
   1. 自愈成功：故意给错误代码（缺基线的 fib → RecursionError），fix 修到通过
   2. 硬熔断：max_attempts=1，第一轮失败即熔断，返回原因（诚实收尾）
 """
+import asyncio
 import os
 import sys
 
@@ -19,7 +20,8 @@ def main():
     graph = get_exec_graph()
 
     print("=== 1. 自愈成功：错误代码 → fix 修到通过 ===")
-    r = graph.invoke(
+    # verify 节点为 async（P2 目标模式 judge），统一用 ainvoke
+    r = asyncio.run(graph.ainvoke(
         {
             "task": "实现斐波那契数列第 N 项并输出第 10 项的值",
             # 故意缺基线 → RecursionError，让 fix 有机会修复
@@ -27,7 +29,7 @@ def main():
             "tests": [{"expected": "55", "mode": "exact", "desc": "fib(10)"}],
             "max_attempts": 3,
         }
-    )
+    ))
     print(f"passed={r.get('passed')} attempts={r.get('attempts')}")
     print("final:", r["final"][:300].replace("\n", " / "))
     ok1 = r.get("passed") and "55" in r["final"]
@@ -35,14 +37,14 @@ def main():
 
     print()
     print("=== 2. 硬熔断：max_attempts=1 第一轮失败即熔断 ===")
-    r2 = graph.invoke(
+    r2 = asyncio.run(graph.ainvoke(
         {
             "task": "输出 100 个数字 7",
             "code": "print('7')",
             "tests": [{"expected": "7" * 100, "mode": "exact", "desc": "100个7"}],
             "max_attempts": 1,
         }
-    )
+    ))
     print(f"passed={r2.get('passed')} attempts={r2.get('attempts')}")
     print("final:", r2["final"][:200].replace("\n", " / "))
     ok2 = (not r2.get("passed")) and "熔断" in r2["final"]
