@@ -14,7 +14,7 @@ from typing import AsyncGenerator
 from langchain_core.messages import AIMessage
 
 # 内部节点名（其 LLM 输出不应流给用户）
-_INTERNAL_NODES = {"intent"}
+_INTERNAL_NODES = {"intent", "task"}
 
 
 def _sse(data: dict) -> str:
@@ -52,6 +52,9 @@ async def stream_chat(
         elif mode == "updates":
             # exec/read 等节点返回的完整 AIMessage → 补发（若无打字机流）
             for node_name, update in data.items():
+                # LangGraph：节点返回空 dict（如 compress 未触发）时 update 为 None → 跳过
+                if not update:
+                    continue
                 # P2-K：收集节点写回的 token 记账（取最终值）
                 if tokens is not None and update.get("tokens") is not None:
                     tokens.append(int(update["tokens"]))

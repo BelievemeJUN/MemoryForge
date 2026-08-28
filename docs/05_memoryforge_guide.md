@@ -236,7 +236,8 @@ plan（规划方案）→ write（写代码）→ execute（沙箱跑）→ veri
 - 状态机复用：`queued→running→succeeded/failed`，worker 只认 queued，非法流转自动拒绝。
 - API：`POST /api/tasks`（入队即返回 task_id）/ `GET /api/tasks/{id}`（轮询状态）/ `GET /api/tasks`（列表）；认证即命名空间，跨用户 404。
 - 端到端：POST 任务 → worker 2s 内沙箱执行 → `succeeded` 含 stdout/duration。
-- 面试话术：*"请求线程只入队，worker 消费回写状态，天然支持横向扩。"*
+- **接入对话图**：新增 `task` 意图 + `task` 节点——说「帮我后台跑个任务：<代码>」→ 入队返回任务号；说「查任务 <任务号>」→ 返回状态/结果。LLM 结构化抽取（`create/status + code/task_id`），核心逻辑 `_apply_task_request` 与 LLM 分离可单测。对话图因此有了「异步出口」。
+- 面试话术：*"请求线程只入队，worker 消费回写状态，天然支持横向扩；对话层也接上了——用户一句话就能提交/查询后台任务，形成闭环。"*
 
 ---
 

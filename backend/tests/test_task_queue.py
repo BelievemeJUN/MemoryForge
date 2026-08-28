@@ -12,8 +12,18 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6380/0")
 
 
 @pytest.fixture
-def redis():
-    return aioredis.from_url(REDIS_URL)
+async def redis():
+    r = aioredis.from_url(REDIS_URL)
+    yield r
+    await r.aclose()
+
+
+@pytest.fixture(autouse=True)
+async def _clean_queue():
+    """每个测试前清空全局队列，防残留任务干扰（对话图测试也会入队）。"""
+    r = aioredis.from_url(REDIS_URL)
+    await r.delete(_KEY_QUEUE)
+    await r.aclose()
 
 
 def _uid():

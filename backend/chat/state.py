@@ -24,5 +24,5 @@ class ChatState(TypedDict, total=False):
     user_id: str
     thread_id: str
     knowledge_base_id: str
-    intent: str  # M2-3 意图判断结果（chat/code/kb/memory）
+    intent: str  # M2-3 意图判断结果（chat/code/kb/memory/task）
     tokens: int  # P2-K：请求级 token 记账（intent/chat/exec 各节点累加）

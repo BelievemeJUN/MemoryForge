@@ -23,19 +23,37 @@ load_dotenv()
 # ===== M2-3 意图判断 =====
 INTENT_PROMPT = (
     "你是意图分类器。根据用户最新一条消息判断意图，只输出 JSON 对象，字段：\n"
-    '- "intent": 必填，取值为 chat / code / kb / memory 之一\n'
+    '- "intent": 必填，取值为 chat / code / kb / memory / task 之一\n'
     "  - chat: 普通对话/闲聊/提问，不需要执行代码，不需要查资料\n"
     "  - code: 要求写代码、运行、调试、算结果（需要执行代码）\n"
     "  - kb: 想查知识库/内部文档/资料\n"
     "  - memory: 想回忆之前对话/个人偏好/习惯\n"
+    '  - task: 要求后台执行/排队跑/批量任务/异步处理，或查询后台任务状态（任务号）\n'
     '- "reasoning": 判断理由，一句话\n'
     "只输出 JSON，不要其他文字。"
 )
 
 
 class Intent(BaseModel):
-    intent: Literal["chat", "code", "kb", "memory"]
+    intent: Literal["chat", "code", "kb", "memory", "task"]
     reasoning: str = Field(description="判断理由")
+
+
+# ===== B：任务队列接入对话（TaskRequest 结构化抽取，_task_node 执行） =====
+TASK_PROMPT = (
+    "你是后台任务助手。根据用户最新消息解析意图，只输出 JSON 对象，字段：\n"
+    '- "action": 必填，create（要求后台执行代码/跑任务/批量处理）或 status（查询任务状态）\n'
+    '- "code": 要后台执行的 Python 代码（action=create 时；从代码块或描述中提取，没有则空串）\n'
+    '- "task_id": 要查询的任务号（action=status 时；用户给的任务号，没有则空串）\n'
+    "只输出 JSON，不要其他文字。"
+)
+
+
+class TaskRequest(BaseModel):
+    action: Literal["create", "status"]
+    code: str = Field(default="", description="要后台执行的 Python 代码")
+    task_id: str = Field(default="", description="要查询的任务号")
+    reasoning: str = Field(default="", description="判断理由")
 
 
 def _usage_tokens(resp) -> int:
@@ -141,13 +159,15 @@ def _intent_node(state: ChatState) -> dict[str, Any]:
     }
 
 
-def _route(state: ChatState) -> Literal["chat", "exec", "read"]:
-    """M2-3 条件路由：根据意图分发。exec 走执行子图，read 走读工具节点。"""
+def _route(state: ChatState) -> Literal["chat", "exec", "read", "task"]:
+    """M2-3 条件路由：根据意图分发。exec 走执行子图，read 走读工具节点，task 走任务队列节点。"""
     intent = state.get("intent", "chat")
     if intent == "code":
         return "exec"
     if intent in ("kb", "memory"):
         return "read"
+    if intent == "task":
+        return "task"
     return "chat"
 
 
@@ -235,6 +255,63 @@ async def _exec_node(state: ChatState) -> dict[str, Any]:
     }
 
 
+async def _task_status_text(mgr, task_id: str) -> str:
+    """B：把任务状态/结果拼成给用户看的文本。核心逻辑，可单测（不碰 LLM）。"""
+    if not task_id:
+        return "⚠️ 需要任务号。格式：查任务 <任务号>"
+    task = await mgr.get(task_id)
+    if task is None:
+        return f"❌ 找不到任务 `{task_id}`（可能不属于你或已删除）。"
+    s = task.status.value
+    lines = [f"任务 `{task_id}` 状态：**{s}**"]
+    if s == "succeeded":
+        out = (task.result.get("stdout") or "").strip()
+        lines.append("```\n" + out + "\n```" if out else "（无输出）")
+    elif s == "failed":
+        lines.append("失败原因：" + (task.error or "未知"))
+    elif s == "running":
+        lines.append("⏳ 执行中，稍后再查…")
+    elif s == "queued":
+        lines.append("🕐 排队中，稍后再查…")
+    elif s == "cancelled":
+        lines.append("已取消。")
+    return "\n".join(lines)
+
+
+async def _apply_task_request(mgr, req: TaskRequest) -> str:
+    """B：执行解析出的任务请求（create → 入队；status → 查询）。核心逻辑，可单测。"""
+    if req.action == "status":
+        return await _task_status_text(mgr, req.task_id)
+    if not req.code:
+        return "⚠️ 没识别到要运行的代码。请用代码块说明，或说「帮我后台跑：<代码>」。"
+    task = await mgr.create(task_type="code_exec", payload={"code": req.code})
+    await mgr.enqueue(task.id)
+    return (
+        f"✅ 已提交后台任务（任务号 `{task.id}`）。"
+        f"执行完成后可用「查任务 {task.id}」获取结果。"
+    )
+
+
+async def _task_node(state: ChatState) -> dict[str, Any]:
+    """B：任务队列节点。LLM 结构化抽取（create/status+code/task_id）→ 入队/查状态。
+
+    面试可讲：对话图的「异步出口」——长耗时任务不阻塞对话，返回 task_id
+    由后台 worker 消费，再通过对话「查任务 <id>」轮询，形成闭环。
+    """
+    from tasks.manager import TaskManager  # lazy
+
+    model = build_chat_model().with_structured_output(TaskRequest, method="json_mode")
+    latest = state["messages"][-1]
+    req = model.invoke([SystemMessage(content=TASK_PROMPT), latest])
+    logger.info("任务节点解析: %s (%s)", req.action, req.reasoning)
+    mgr = TaskManager(user_id=state.get("user_id", ""))
+    text = await _apply_task_request(mgr, req)
+    return {
+        "messages": [AIMessage(content=text)],
+        "tokens": state.get("tokens", 0) + _usage_tokens(req),
+    }
+
+
 def _format_parents(parents) -> str:
     """知识库父块列表 → 文本。"""
     if not parents:
@@ -318,11 +395,12 @@ def build_graph(checkpointer=None):
     g.add_node("chat", _chat_node)
     g.add_node("exec", _exec_node)     # M2-4 执行子图入口
     g.add_node("read", _read_node)     # M2-3 后半：读工具节点（知识库/记忆检索）
+    g.add_node("task", _task_node)     # B：任务队列节点（后台执行/查状态）
     g.add_edge(START, "compress")
     g.add_edge("compress", "intent")
     g.add_conditional_edges(
-        "intent", _route, {"chat": "chat", "exec": "exec", "read": "read"}
+        "intent", _route, {"chat": "chat", "exec": "exec", "read": "read", "task": "task"}
     )
-    for n in ("chat", "exec", "read"):
+    for n in ("chat", "exec", "read", "task"):
         g.add_edge(n, END)
     return g.compile(checkpointer=checkpointer)
