@@ -16,7 +16,7 @@
 | 沙箱 | Docker（一次性容器） | 隔离执行用户代码，六层防御 |
 | 记忆 | Milvus 向量库 + PostgreSQL | 长期记忆 + 会话持久化 |
 | 缓存/限流/成本 | Redis | 限流、并发、token 记账 |
-| 测试 | pytest 42 用例 + 安全回归 + GitHub Actions | 全链路保障 |
+| 测试 | pytest 62 用例 + 安全回归 + GitHub Actions | 全链路保障 |
 
 ---
 
@@ -202,7 +202,7 @@ plan（规划方案）→ write（写代码）→ execute（沙箱跑）→ veri
 | "怎么防用户恶意使用？" | 认证（不信请求参数）+ 多租户配额 + Redis 限流 + per-user 成本熔断 |
 | "AI 会'忘记'吗？" | 四类记忆 + Milvus 混合检索 + 后台异步提取 + 对话全场景注入 |
 | "上线后怎么排查问题？" | request_id 全链贯穿 + JSON 结构化日志 + 四依赖健康探活 |
-| "怎么保证质量？" | 42 个 pytest + 安全回归 + GitHub Actions CI，提交即验证 |
+| "怎么保证质量？" | 62 个 pytest + 安全回归 + GitHub Actions CI，提交即验证 |
 
 ---
 
@@ -210,9 +210,33 @@ plan（规划方案）→ write（写代码）→ execute（沙箱跑）→ veri
 
 1. **沙箱是容器级隔离**：共享宿主内核，生产应上 gVisor/Kata/Firecracker（VM 级）。
 2. **API Key 是静态映射**：演示级，生产应接用户表 + JWT 动态签发。
-3. **记忆无淘汰/LRU**：长期记忆库只增不减，后续要加访问频率/过期清理。
+3. **记忆淘汰是"低频淘汰"而非精确 LRU**：已有访问时间节流（Redis）+ 后台维护任务淘汰低频低价值记忆，但更细粒度的过期/容量上限（如"每人最多 N 条"）未做。
 4. **成本是"请求级近似"**：exec 子图内部精确记账在评测层，生产应统一为一次请求一个 usage 账单。
 5. **AST 审查是"友好拦截"**：不承诺对抗性逃逸，真正的边界是容器/VM 隔离。
+
+---
+
+## 13. 本轮新增：数据合规 + 上下文压缩 + 异步任务队列（A/C/B）
+
+### A 数据合规（GDPR 删除权）
+- **`DELETE /api/user/data`**：只删当前认证用户自己的数据（不信请求参数）。
+- 删哪里：PostgreSQL（对话 + 画像 + 知识库级联）+ Milvus（记忆/知识库向量）+ Redis（成本/限流/记忆触摸/任务）。
+- **降级容错**：Milvus 挂时其余存储照删不阻塞——实测 PG 16→0、Redis keys 清空。
+- 配套 `scripts/backup.sh`：PG dump + Redis RDB（备份/恢复闭环）。
+- 面试话术：*"删除权是合规红线，我做成单接口全链路，且任一存储故障不拖垮整体。"*
+
+### C 长上下文压缩（控窗口 + 省 token）
+- chat 图加 `compress` 节点（START 后、意图判断前）：消息超阈值（默认 20）保近舍远，用 `RemoveMessage` 删早期。
+- 测试：25 条删 5、10 条不触发、无 id 跳过——纯逻辑单测。
+- 面试话术：*"长对话是 token 黑洞，我在意图判断前先压缩，窗口可控、成本可算。"*
+
+### B 异步任务队列（长耗时任务不阻塞请求）
+- 面试场景：*"评测/批量执行这类重活怎么办？"* → 队列 + worker。
+- `TaskManager.enqueue` → Redis List FIFO（`tasks:queue`，value 带用户前缀路由回命名空间）；worker `BRPOP` 消费，多实例可横向扩展。
+- 状态机复用：`queued→running→succeeded/failed`，worker 只认 queued，非法流转自动拒绝。
+- API：`POST /api/tasks`（入队即返回 task_id）/ `GET /api/tasks/{id}`（轮询状态）/ `GET /api/tasks`（列表）；认证即命名空间，跨用户 404。
+- 端到端：POST 任务 → worker 2s 内沙箱执行 → `succeeded` 含 stdout/duration。
+- 面试话术：*"请求线程只入队，worker 消费回写状态，天然支持横向扩。"*
 
 ---
 
