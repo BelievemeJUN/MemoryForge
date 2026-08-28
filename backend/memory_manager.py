@@ -484,8 +484,20 @@ class MemoryManager:
         gamma: float = 0.3,
         memory_configs: Dict[str, Dict] = None,
         type_weights: Dict[str, float] = None,
+        total_cap: int | None = None,
     ) -> Dict[str, List[Dict]]:
-        """从记忆字典中提取每个记忆类型的前 k 条记录"""
+        """P2 修正：带类型权重的统一排序 + 每类型保底 + 总名额封顶。
+
+        旧实现的问题（面试可讲）：每类型独立取 top_k，type_weight 是死配置——
+          - 不改变名额（名额由 k 配额定）；
+          - 也不改变同类型排序（同类型乘同一常数，相对顺序不变）。
+        新设计：
+          1) 每类型内部先按「基础分」排序（语义分 + 时近 + 重要度，不含类型权重）；
+          2) 每类型**保底 1 条**（各自最高分）——四类都有覆盖，不会被挤没；
+          3) 其余候选进「竞争池」（各类型配额内），带 type_weight 统一评分，
+             **总名额封顶**（total_cap，默认 6）制造真实竞争——配额总和大于总名额时，
+             「语义记忆最重要」的权重才真正决定谁入选。
+        """
         if type_weights is None:
             type_weights = {
                 "summary": 0.7,
@@ -493,71 +505,88 @@ class MemoryManager:
                 "episodic": 1.0,
                 "procedural": 1.2,
             }
-
+        memory_configs = memory_configs or {}
+        if total_cap is None:
+            total_cap = int(os.getenv("MEM_MAX_TOTAL_RECALL", "6"))
         current_time = time.time()
         DECAY_RATE = 0.995
 
-        result = {}
+        def _base_score(mem: Dict) -> float:
+            # 注意：字段可能是显式 None（Milvus 未存），用 or 兜底而非 get 默认值
+            semantic_score = mem.get("score") or 0.5
+            last_access = mem.get("last_access_at") or current_time
+            hours_passed = (current_time - last_access) / 3600
+            recency_score = DECAY_RATE**hours_passed
+            importance_score = mem.get("importance") or 0.5
+            return (
+                alpha * semantic_score
+                + beta * recency_score
+                + gamma * importance_score
+            )
 
-        for mem_type, memories in memory_dict.items():
-            if not memories:
-                result[mem_type] = []
-                continue
+        # 每类型候选按基础分排序（不含类型权重）
+        per_type: Dict[str, List[tuple]] = {
+            mt: sorted(((m, _base_score(m)) for m in mems), key=lambda x: x[1], reverse=True)
+            for mt, mems in memory_dict.items()
+        }
 
-            type_weight = type_weights.get(mem_type, 1.0)
-            scored_memories = []
+        result: Dict[str, List[Dict]] = {mt: [] for mt in memory_dict}
+        quota = {
+            mt: int(memory_configs[mt]["k"])
+            for mt in per_type
+            if mt in memory_configs and memory_configs.get(mt, {}).get("k")
+        }
 
-            for mem in memories:
-                semantic_score = mem.get("score", 0.5)
+        # 1) 保底：每类型最高分 1 条
+        reserved = 0
+        for mt, scored in per_type.items():
+            if scored:
+                result[mt].append(scored[0][0])
+                per_type[mt] = scored[1:]
+                reserved += 1
 
-                last_access = mem.get("last_access_at", current_time)
-                hours_passed = (current_time - last_access) / 3600
-                recency_score = DECAY_RATE**hours_passed
+        # 2) 竞争池：各类型「配额内」的剩余候选，带类型权重统一评分；
+        #    总名额封顶制造真实竞争（否则 pool 恒等于名额，权重无意义）
+        total_quota = sum(quota.values())
+        total_slots = max(1, min(total_quota, total_cap))
+        remaining_slots = max(0, total_slots - reserved)
+        pool = []
+        for mt, scored in per_type.items():
+            tw = type_weights.get(mt, 1.0)
+            cap = max(0, quota.get(mt, 0) - 1)  # 保底已占 1，竞争名额上限 = k-1
+            for mem, base in scored[:cap]:
+                pool.append((mem, base * tw))  # 类型权重在这里生效
+        pool.sort(key=lambda x: x[1], reverse=True)
 
-                importance_score = mem.get("importance", 0.5)
-
-                final_score = (
-                    alpha * semantic_score
-                    + beta * recency_score
-                    + gamma * importance_score
-                ) * type_weight
-
-                scored_memories.append((mem, final_score))
-
-            scored_memories.sort(key=lambda x: x[1], reverse=True)
-            top_k = memory_configs[mem_type]["k"]
-
-            result[mem_type] = [
-                {
-                    "id": mem.get("id"),
-                    "memory_type": mem.get("memory_type"),
-                    "content": mem.get("content"),
-                    "last_access_at": mem.get("last_access_at"),
-                    "summary_id": mem.get("summary_id"),
-                    "thread_id": mem.get("thread_id"),  # P2：保留，供访问时间更新
-                    "created_at": mem.get("created_at"),  # P2：同上
-                    "vector": mem.get("vector"),  # P2：upsert 需带原向量
-                }
-                for mem, _ in scored_memories[:top_k]
-            ]
+        for mem, _ in pool[:remaining_slots]:
+            mt = mem.get("memory_type") or "summary"
+            result[mt].append(mem)
 
         return result
 
     async def resolve_conflicts(self, filtered_memory: dict, user_id: int) -> dict:
-        """检测并删除重复记忆"""
-        items = []
+        """P2 修正：相似记忆不再「删新」，而是「以新替旧」。
 
+        旧问题（面试可讲）：新记忆与旧记忆相似度>0.9 就删掉新记忆——但新记忆往往是
+        用户**当前最新关注点**，删新留旧会丢时效（旧记忆越存越久越过时）。
+        新设计：
+          - 所有新提取的记忆都保留（它是"现在"）；
+          - 相似度 >=0.95（几乎同一条）：记录旧记忆 id → 调用方「以新替旧」删除旧条，
+            库不膨胀且内容是最新的；
+          - 相似度 0.9~0.95（主题相关但可能不同）：两条都保留，交给综合排序/权重处理，
+            避免误删（如"喜欢美式"vs"喜欢拿铁"是两条真实偏好）。
+        返回 {"memory": 全部新记忆, "supersede_ids": [旧记忆id]}
+        """
+        items = []
         for key in ["semantic_memory", "episodic_memory", "procedural_memory"]:
             for idx, mem in enumerate(filtered_memory.get(key, [])):
                 items.append((key, idx, mem["content"], key.replace("_memory", "")))
-
         if filtered_memory.get("summary"):
             items.append(
                 ("summary", None, filtered_memory["summary"]["content"], "summary")
             )
-
         if not items:
-            return filtered_memory
+            return {"memory": filtered_memory, "supersede_ids": []}
 
         vectors = await self.embeddings.aembed_documents([item[2] for item in items])
 
@@ -565,11 +594,9 @@ class MemoryManager:
 
         type_to_items = defaultdict(list)
         type_to_vectors = defaultdict(list)
-
         for item, vec in zip(items, vectors):
-            mem_type = item[3]
-            type_to_items[mem_type].append(item)
-            type_to_vectors[mem_type].append(vec)
+            type_to_items[item[3]].append(item)
+            type_to_vectors[item[3]].append(vec)
 
         async def search_type(mem_type, type_items, type_vectors):
             filter_expr = f"user_id == {user_id} and memory_type == '{mem_type}'"
@@ -580,48 +607,52 @@ class MemoryManager:
                 search_params={"metric_type": "COSINE", "params": {"ef": 64}},
                 limit=1,
                 filter=filter_expr,
-                output_fields=["distance"],
+                output_fields=["id"],
             )
-            return [
-                results and results[i] and results[i][0]["distance"] >= 0.9
-                for i in range(len(type_items))
-            ]
+            out = []
+            for i in range(len(type_items)):
+                if results and results[i]:
+                    hit = results[i][0]
+                    dist = float(hit.get("distance", 0.0) or 0.0)
+                    old_id = hit.get("entity", {}).get("id")
+                    out.append((dist, old_id))
+                else:
+                    out.append((0.0, None))
+            return out
 
         tasks = [
             search_type(t, type_to_items[t], type_to_vectors[t]) for t in type_to_items
         ]
         all_results = await asyncio.gather(*tasks)
 
-        is_similar_list = []
-        for results in all_results:
-            is_similar_list.extend(results)
+        results_flat = []
+        for res in all_results:
+            results_flat.extend(res)
 
-        to_remove = {
-            "semantic_memory": [],
-            "episodic_memory": [],
-            "procedural_memory": [],
-        }
-        clear_summary = False
+        supersede_ids = []
+        for (key, idx, _, _), (dist, old_id) in zip(items, results_flat):
+            # 极高相似（几乎同一条）→ 以新替旧：新记忆保留，旧记忆记录待删除
+            if dist >= 0.95 and old_id:
+                supersede_ids.append(str(old_id))
 
-        for (key, idx, _, _), is_similar in zip(items, is_similar_list):
-            if not is_similar:
-                continue
-            if key == "summary":
-                clear_summary = True
-            elif idx is not None:
-                to_remove[key].append(idx)
+        return {"memory": filtered_memory, "supersede_ids": supersede_ids}
 
-        for key, indices in to_remove.items():
-            if indices:
-                memories = filtered_memory[key]
-                for idx in sorted(indices, reverse=True):
-                    if idx < len(memories):
-                        del memories[idx]
-
-        if clear_summary:
-            filtered_memory["summary"] = {}
-
-        return filtered_memory
+    async def delete_memories(self, user_id: int, memory_ids: list) -> int:
+        """P2：以新替旧——删除被新记忆替代的旧记忆（避免库膨胀）。"""
+        if not memory_ids:
+            return 0
+        expr = f"user_id == {user_id} and id in {list(memory_ids)}"
+        try:
+            res = await self.client.delete(
+                collection_name=self.collection_name, filter=expr
+            )
+            n = int(getattr(res, "delete_count", 0) or 0)
+            if n:
+                logger.info("以新替旧: 删除 %d 条被替代的旧记忆", n)
+            return n
+        except Exception as e:  # noqa: BLE001
+            logger.warning("删除被替代旧记忆失败（不影响主流程）: %s", e)
+            return 0
 
     async def add_memories_batch(
         self,

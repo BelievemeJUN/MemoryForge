@@ -267,10 +267,12 @@ async def _store_memories(
             "filtered_message_ids": list
         }
     """
-    # 检测冲突记忆（删除相似度高于0.9的记忆）
-    filtered_memory = await milvus_client.resolve_conflicts(
+    # 检测冲突记忆（P2 修正）：不再删新记忆，而是返回被替代的旧记忆 id（以新替旧，保时效）
+    conflict = await milvus_client.resolve_conflicts(
         filtered_memory=filtered_memory, user_id=user_id
     )
+    filtered_memory = conflict["memory"]
+    supersede_ids = conflict.get("supersede_ids", [])
 
     #使用小模型对新旧用户画像进行补充
     if new_user_profile:
@@ -342,6 +344,10 @@ async def _store_memories(
                 "token_count": total_tokens,
                 "message_count": len(messages),
             }
+
+        # P2 以新替旧：删除被新记忆替代的旧记忆（避免库膨胀，失败不影响主流程）
+        if supersede_ids:
+            await milvus_client.delete_memories(user_id, supersede_ids)
 
         # 全部成功
         logger.info(f"成功压缩会话 {thread_id}，摘要 {summary_id}")
