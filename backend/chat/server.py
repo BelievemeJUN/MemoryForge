@@ -193,6 +193,50 @@ async def delete_my_data(user_id: str = Depends(require_user)):
     return {"status": "deleted", "user_id": user_id, "stats": stats}
 
 
+class TaskCreateRequest(BaseModel):
+    """B：创建任务请求体。task_type=code_exec 时 payload 需带 code。"""
+
+    task_type: str = "code_exec"
+    payload: dict = {}
+
+
+@app.post("/api/tasks")
+async def create_task(req: TaskCreateRequest, user_id: str = Depends(require_user)):
+    """B：创建任务（入队即返回，后台 worker 异步消费）。
+
+    长耗时任务（评测/批量执行）不阻塞请求线程；任务只属于当前认证用户。
+    """
+    from tasks.manager import TaskManager  # lazy
+
+    mgr = TaskManager(user_id=user_id)
+    task = await mgr.create(task_type=req.task_type, payload=req.payload)
+    await mgr.enqueue(task.id)
+    logger.info("任务已入队: user=%s task=%s type=%s", user_id, task.id, task.task_type)
+    return {"task_id": task.id, "status": task.status.value}
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task(task_id: str, user_id: str = Depends(require_user)):
+    """B：查询单个任务状态/结果（前端轮询）。只能查自己的。"""
+    from tasks.manager import TaskManager  # lazy
+
+    mgr = TaskManager(user_id=user_id)
+    task = await mgr.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return task.to_dict()
+
+
+@app.get("/api/tasks")
+async def list_tasks(user_id: str = Depends(require_user)):
+    """B：列出当前用户最近任务（按创建时间倒序）。"""
+    from tasks.manager import TaskManager  # lazy
+
+    mgr = TaskManager(user_id=user_id)
+    tasks = await mgr.list(limit=20)
+    return [t.to_dict() for t in tasks]
+
+
 @app.get("/health")
 async def health():
     """P0-E：依赖探活（PG/Redis/Milvus/Docker），返回各依赖状态。"""

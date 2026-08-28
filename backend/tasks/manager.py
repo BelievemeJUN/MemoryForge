@@ -33,6 +33,8 @@ _ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
 
 _KEY_TASK = "task:{}"
 _KEY_INDEX = "tasks:all"
+# B：全局 FIFO 队列（worker 消费）。value = "{user_id}:{task_id}"，worker 据此路由回用户命名空间。
+_KEY_QUEUE = "tasks:queue"
 
 
 def _key_user_prefix(user_id: str) -> tuple[str, str]:
@@ -73,6 +75,13 @@ class TaskManager:
         pipe.zadd(self._key_index, {task.id: task.created_at})
         await pipe.execute()
         return task
+
+    async def enqueue(self, task_id: str) -> None:
+        """B：任务入队（FIFO）。value 带用户前缀，worker 按此路由回对应命名空间。
+
+        LPUSH + worker BRPOP → 天然 FIFO；多 worker 可横向扩展（每个任务只出队一次）。
+        """
+        await self.redis.lpush(_KEY_QUEUE, f"{self.user_id}:{task_id}")
 
     async def transition(self, task_id: str, to: TaskStatus, *, result=None, error: str = "") -> Optional[Task]:
         """状态流转：合法才允许。成功/失败可带结果或错误。"""
