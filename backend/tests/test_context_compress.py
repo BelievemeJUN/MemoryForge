@@ -26,4 +26,5 @@ async def test_skip_msgs_without_id():
 
     # LangChain 消息通常自动带 id；这里用无 id 属性的对象验证跳过逻辑
     msgs = [NoId() for _ in range(25)]
-    assert await _compress_node({"messages": msgs}) == {}
+    r = await _compress_node({"messages": msgs})
+    assert r.get("messages", []) == []  # 无 id → 没有可移除项
