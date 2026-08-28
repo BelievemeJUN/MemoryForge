@@ -182,6 +182,17 @@ async def chat(req: ChatRequest, user_id: str = Depends(require_user)):
     )
 
 
+@app.delete("/api/user/data")
+async def delete_my_data(user_id: str = Depends(require_user)):
+    """P2 数据合规：删除当前用户全部数据（只能删自己，GDPR 删除权）。"""
+    from data_governance import delete_user_all  # lazy
+
+    uid = int(user_id) if str(user_id).isdigit() else 0
+    stats = await delete_user_all(uid)
+    logger.info("数据合规: 用户 %s 删除数据完成 %s", user_id, stats)
+    return {"status": "deleted", "user_id": user_id, "stats": stats}
+
+
 @app.get("/health")
 async def health():
     """P0-E：依赖探活（PG/Redis/Milvus/Docker），返回各依赖状态。"""

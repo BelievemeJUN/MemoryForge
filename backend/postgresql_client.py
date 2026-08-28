@@ -928,6 +928,26 @@ class PostgreSQLParentClient:
             logger.error(f"更新用户画像失败: {e}")
             return False
 
+    async def delete_user_data(self, user_id: int) -> dict:
+        """P2 数据合规：删除某用户全部 PG 数据（对话/画像/知识库，知识库级联删除）。"""
+        counts = {"raw_conversations": 0, "users": 0}
+        if not self.pool:
+            return counts
+        try:
+            async with self.pool.acquire() as conn:
+                # 原始对话（独立表，无外键，先删）
+                r1 = await conn.execute(
+                    "DELETE FROM raw_conversations WHERE user_id = $1", user_id
+                )
+                counts["raw_conversations"] = int(str(r1).split()[-1]) if r1 else 0
+                # users 级联删除知识库 → 文件 → 父块/哈希
+                r2 = await conn.execute("DELETE FROM users WHERE user_id = $1", user_id)
+                counts["users"] = int(str(r2).split()[-1]) if r2 else 0
+            logger.info("数据合规: PG 删除 user=%s %s", user_id, counts)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"删除用户数据(PG)失败: {e}")
+        return counts
+
     async def get_raw_conversation_by_summary_id(
         self, summary_id: str, user_id: int, thread_id: str
     ) -> str:

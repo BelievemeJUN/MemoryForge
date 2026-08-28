@@ -182,3 +182,19 @@ class AsyncMilvusClientWrapper:
         return await self.knowledge_base_manager.delete_file_chunks(
             knowledge_base_id=knowledge_base_id, file_hash=file_hash, user_id=user_id
         )
+
+    async def delete_user_all(self, user_id: int) -> dict:
+        """P2 数据合规：删除用户在 Milvus 的全部数据（记忆 + 知识库向量）。"""
+        deleted = {"memory": 0, "knowledge": 0}
+        for key, coll in (
+            ("memory", self.memory_collection),
+            ("knowledge", self.knowledge_base_collection),
+        ):
+            try:
+                res = await self.client.delete(
+                    collection_name=coll, filter=f"user_id == {user_id}"
+                )
+                deleted[key] = int(getattr(res, "delete_count", 0) or 0)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"删除 Milvus 用户数据({key})失败: {e}")
+        return deleted

@@ -5,11 +5,13 @@ M2-1 只做一个节点 chat（LLM 直接回复），先验证状态机骨架。
 后续按 M2-2..M2-5 逐步加：流式 → 意图判断 → 读工具节点 → 执行子图。
 """
 import logging
+import os
 from typing import Any, Literal
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import RemoveMessage
 from pydantic import BaseModel, Field
 
 from .llm import build_chat_model
@@ -48,6 +50,31 @@ def _usage_tokens(resp) -> int:
         rm = getattr(resp, "response_metadata", None) or {}
         tokens = int((rm.get("token_usage") or {}).get("total_tokens") or 0)
     return tokens
+
+
+# P2 长上下文压缩：消息超过该阈值时保留最近 N 条，删掉早期（保近舍远）
+MAX_CONTEXT_MESSAGES = int(os.getenv("MAX_CONTEXT_MESSAGES", "20"))
+
+
+async def _compress_node(state: ChatState) -> dict[str, Any]:
+    """P2 长上下文压缩：消息过多时保留最近 N 条，删掉早期（保近舍远）。
+
+    面试可讲：长对话会撑爆上下文窗口 + 烧钱；在意图判断前先压缩历史——
+    用 RemoveMessage 删早期消息（控窗口 + 省 token）。可升级：早期消息用 LLM
+    摘要成一条 summary 保留大意（代价是额外一次调用）。
+    """
+    msgs = state["messages"]
+    if len(msgs) <= MAX_CONTEXT_MESSAGES + 2:
+        return {}
+    keep = MAX_CONTEXT_MESSAGES
+    removes = [
+        RemoveMessage(id=m.id)
+        for m in msgs[: len(msgs) - keep]
+        if getattr(m, "id", None)
+    ]
+    if removes:
+        logger.info("上下文压缩: 删 %d 条早期消息，保留最近 %d 条", len(removes), keep)
+    return {"messages": removes}
 
 
 async def _retrieve_chat_memories(user_id: str, query: str) -> str:
@@ -284,12 +311,15 @@ def build_graph(checkpointer=None):
     多轮对话不再需要手动传 history，且会话间隔离。
     """
     g = StateGraph(ChatState)
+    # P2 上下文压缩：START 后先压缩历史（保近舍远），再意图判断
+    g.add_node("compress", _compress_node)
     # 意图判断 → 条件路由 → 对应节点
     g.add_node("intent", _intent_node)
     g.add_node("chat", _chat_node)
     g.add_node("exec", _exec_node)     # M2-4 执行子图入口
     g.add_node("read", _read_node)     # M2-3 后半：读工具节点（知识库/记忆检索）
-    g.add_edge(START, "intent")
+    g.add_edge(START, "compress")
+    g.add_edge("compress", "intent")
     g.add_conditional_edges(
         "intent", _route, {"chat": "chat", "exec": "exec", "read": "read"}
     )
