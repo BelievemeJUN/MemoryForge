@@ -38,3 +38,19 @@ async def test_add_zero_noop():
     uid = f"cost0-{uuid.uuid4().hex[:8]}"
     await c.add_usage(uid, 0)
     assert await c.get_usage(uid) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_history_tracks_daily_usage():
+    """成本趋势：add_usage 写 hist 快照，history() 能读到今天。"""
+    c = CostTracker()
+    uid = f"hist-{uuid.uuid4().hex[:8]}"
+    await c.add_usage(uid, 80)
+    await c.add_usage(uid, 20)  # 累计 100
+    hist = await c.history(uid, days=7)
+    assert len(hist) == 7  # 近 7 天都有键
+    today = hist.popitem()  # 最后一个是今天（date 顺序）
+    assert today[1] == 100  # 今天累计 100
+    # 其余天为 0（无历史）
+    assert all(v == 0 for _, v in hist.items())

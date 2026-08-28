@@ -928,6 +928,38 @@ class PostgreSQLParentClient:
             logger.error(f"更新用户画像失败: {e}")
             return False
 
+    async def get_user_data(self, user_id: int) -> dict:
+        """数据导出（GDPR 导出权）：该用户对话 + 画像。
+
+        与 delete_user_data 对称——删除权做过了，导出权补上，合规故事才完整。
+        """
+        out = {"conversations": [], "profile": None}
+        if not self.pool:
+            return out
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT role, content, thread_id, created_at "
+                    "FROM raw_conversations WHERE user_id = $1 ORDER BY created_at ASC",
+                    user_id,
+                )
+                out["conversations"] = [
+                    {
+                        "role": r["role"],
+                        "content": r["content"],
+                        "thread_id": r["thread_id"],
+                        "created_at": str(r["created_at"]),
+                    }
+                    for r in rows
+                ]
+                p = await conn.fetchval(
+                    "SELECT user_profile FROM users WHERE user_id = $1", user_id
+                )
+                out["profile"] = p
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"导出用户数据(PG)失败: {e}")
+        return out
+
     async def delete_user_data(self, user_id: int) -> dict:
         """P2 数据合规：删除某用户全部 PG 数据（对话/画像/知识库，知识库级联删除）。"""
         counts = {"raw_conversations": 0, "users": 0}

@@ -146,6 +146,22 @@ class AsyncMilvusClientWrapper:
             user_id, thread_id, memory_dict, summary_id, **kwargs
         )
 
+    async def count_memories(self, user_id: int) -> int:
+        """统计用户记忆数 - 代理到 memory_manager"""
+        return await self.memory_manager.count_memories(user_id)
+
+    async def list_memories(self, user_id: int, limit: int = 20) -> list:
+        """列出用户记忆 - 代理到 memory_manager"""
+        return await self.memory_manager.list_memories(user_id, limit=limit)
+
+    async def prune_to_capacity(self, user_id: int, max_count: int = 200) -> int:
+        """容量上限淘汰 - 代理到 memory_manager"""
+        return await self.memory_manager.prune_to_capacity(user_id, max_count)
+
+    async def delete_memories(self, user_id: int, memory_ids: list) -> int:
+        """删除指定记忆（单条/批量） - 代理到 memory_manager"""
+        return await self.memory_manager.delete_memories(user_id, memory_ids)
+
     # ==================== 知识库管理方法代理 ====================
 
     async def hybrid_retrieval_knowledge_base(
@@ -182,6 +198,27 @@ class AsyncMilvusClientWrapper:
         return await self.knowledge_base_manager.delete_file_chunks(
             knowledge_base_id=knowledge_base_id, file_hash=file_hash, user_id=user_id
         )
+
+    async def export_user_memories(self, user_id: int, limit: int = 200) -> list:
+        """数据导出（GDPR 导出权）：检索该用户在 Milvus 的记忆内容。"""
+        try:
+            res = await self.client.query(
+                collection_name=self.memory_collection,
+                filter=f"user_id == {user_id}",
+                output_fields=["memory_type", "content", "created_at"],
+                limit=limit,
+            )
+            return [
+                {
+                    "memory_type": r.get("memory_type"),
+                    "content": r.get("content"),
+                    "created_at": r.get("created_at"),
+                }
+                for r in res
+            ]
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"导出 Milvus 记忆失败: {e}")
+            return []
 
     async def delete_user_all(self, user_id: int) -> dict:
         """P2 数据合规：删除用户在 Milvus 的全部数据（记忆 + 知识库向量）。"""

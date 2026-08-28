@@ -118,7 +118,10 @@ st.divider()
 st.header("💰 成本看板（当日 token 用量）")
 try:
     rc = redis.Redis.from_url(redis_url, socket_connect_timeout=3)
-    keys = sorted(rc.keys("cost:*"))
+    # 只看当日成本 cost:YYYYMMDD:user（排除 cost:hist:user:YYYYMMDD 的 4 段快照）
+    keys = sorted(
+        k for k in rc.keys("cost:*") if len(k.decode().split(":")) == 3
+    )
     if not keys:
         st.info("暂无成本记录（还没人对话过）")
     else:
@@ -127,6 +130,37 @@ try:
             parts = k.decode().split(":")
             rows.append({"用户": parts[-1], "当日 token": int(rc.get(k) or 0)})
         st.dataframe(rows, width="stretch")
+
+    # 成本趋势（近 7 日，来自 add_usage 的 hist 快照）
+    st.markdown("##### 📈 近 7 日成本趋势（token/天）")
+    try:
+        from datetime import date, timedelta
+
+        import pandas as pd
+
+        hist_keys = sorted(rc.keys("cost:hist:*"))
+        if not hist_keys:
+            st.info("暂无历史成本（今天记账后开始积累，最多回看 31 天）")
+        else:
+            series: dict[str, dict[str, int]] = {}
+            for k in hist_keys:
+                parts = k.decode().split(":")
+                # cost:hist:{user}:{YYYYMMDD}
+                series.setdefault(parts[2], {})[parts[3]] = int(rc.get(k) or 0)
+            today = date.today()
+            dates = [
+                (today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)
+            ]
+            df = pd.DataFrame(
+                {
+                    user: [day.get(d.replace("-", ""), 0) for d in dates]
+                    for user, day in series.items()
+                },
+                index=dates,
+            )
+            st.line_chart(df)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"趋势读取失败: {e}")
 except Exception as e:  # noqa: BLE001
     st.error(f"Redis 不可用: {e}")
 

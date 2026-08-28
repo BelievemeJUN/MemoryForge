@@ -71,6 +71,23 @@ async def test_status_empty_id():
     assert "需要任务号" in text
 
 
+@pytest.mark.asyncio
+async def test_list_empty():
+    uid = _uid()
+    mgr = TaskManager(user_id=uid)
+    text = await _apply_task_request(mgr, TaskRequest(action="list"))
+    assert "你还没有任务" in text
+
+
+@pytest.mark.asyncio
+async def test_list_shows_tasks():
+    uid = _uid()
+    mgr = TaskManager(user_id=uid)
+    task = await mgr.create(task_type="code_exec", payload={"code": "x"})
+    text = await _apply_task_request(mgr, TaskRequest(action="list"))
+    assert task.id in text and "queued" in text
+
+
 def test_graph_compiles_with_task_node():
     g = build_graph()
     nodes = g.get_graph().nodes

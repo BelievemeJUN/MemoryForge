@@ -6,8 +6,49 @@ PG（对话/画像/知识库）、Milvus（记忆/知识库向量）、Redis（�
 """
 import logging
 import os
+import time
 
 logger = logging.getLogger(__name__)
+
+
+async def export_user_all(user_id: int) -> dict:
+    """数据导出（GDPR 导出权）：打包该用户在 PG/Milvus/Redis 的全部数据。
+
+    与 delete_user_all 对称：删除权做过了，导出权补上——合规故事完整。
+    Milvus 不可用降级（不阻塞 PG/Redis 导出）。
+    """
+    data: dict = {"user_id": user_id, "exported_at": int(time.time())}
+
+    # 1) PostgreSQL：对话 + 画像
+    from postgresql_client import get_postgresql_client  # lazy
+
+    pg = await get_postgresql_client()
+    data["postgresql"] = await pg.get_user_data(user_id)
+
+    # 2) Milvus：记忆（降级）
+    try:
+        from milvus_client import get_milvus_client  # lazy
+
+        mc = await get_milvus_client()
+        data["milvus"] = {"memories": await mc.export_user_memories(user_id)}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Milvus 不可用，跳过记忆导出: %s", e)
+        data["milvus"] = {"memories": [], "skipped": str(e)}
+
+    # 3) Redis：当日成本用量
+    try:
+        from cost import CostTracker  # lazy
+
+        ct = CostTracker()
+        data["redis"] = {"daily_token_usage": await ct.get_usage(str(user_id))}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Redis 成本导出失败: %s", e)
+        data["redis"] = {"daily_token_usage": -1}
+
+    logger.info("数据导出: 用户 %s 打包完成（对话 %d 条、记忆 %d 条）",
+                user_id, len(data["postgresql"]["conversations"]),
+                len(data["milvus"]["memories"]))
+    return data
 
 
 async def delete_user_all(user_id: int) -> dict:

@@ -25,7 +25,8 @@ load_dotenv()
 # 合法状态流转（from: allowed next）
 _ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.QUEUED: {TaskStatus.RUNNING, TaskStatus.CANCELLED, TaskStatus.FAILED},
-    TaskStatus.RUNNING: {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED},
+    # RUNNING→QUEUED：B+ 失败重试回排队（仅由 worker 在重试次数未满时发起）
+    TaskStatus.RUNNING: {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.QUEUED},
     TaskStatus.SUCCEEDED: set(),
     TaskStatus.FAILED: set(),
     TaskStatus.CANCELLED: set(),
@@ -35,6 +36,12 @@ _KEY_TASK = "task:{}"
 _KEY_INDEX = "tasks:all"
 # B：全局 FIFO 队列（worker 消费）。value = "{user_id}:{task_id}"，worker 据此路由回用户命名空间。
 _KEY_QUEUE = "tasks:queue"
+# B+：重试调度 ZSET（score=下次可重试时间，member=user_id:task_id）+ 死信 LIST（重试耗尽）
+_KEY_RETRY = "tasks:retry"
+_KEY_DLQ = "tasks:dlq"
+
+# worker 失败重试次数上限（超过进死信队列）
+DEFAULT_MAX_RETRIES = int(os.getenv("TASK_MAX_RETRIES", "2"))
 
 
 def _key_user_prefix(user_id: str) -> tuple[str, str]:
@@ -82,6 +89,19 @@ class TaskManager:
         LPUSH + worker BRPOP → 天然 FIFO；多 worker 可横向扩展（每个任务只出队一次）。
         """
         await self.redis.lpush(_KEY_QUEUE, f"{self.user_id}:{task_id}")
+
+    async def schedule_retry(self, task_id: str, delay: float) -> None:
+        """B+：失败任务延迟重试——入 ZSET（score=now+delay），worker 到期搬回主队列。
+
+        面试可讲：直接重试会「闪电风暴」打爆下游；用延迟队列做指数退避。
+        """
+        await self.redis.zadd(
+            _KEY_RETRY, {f"{self.user_id}:{task_id}": time.time() + delay}
+        )
+
+    async def push_dlq(self, task_id: str, error: str = "") -> None:
+        """B+：重试耗尽进死信队列（人工排查/重放）。"""
+        await self.redis.rpush(_KEY_DLQ, f"{self.user_id}:{task_id}|{error[:200]}")
 
     async def transition(self, task_id: str, to: TaskStatus, *, result=None, error: str = "") -> Optional[Task]:
         """状态流转：合法才允许。成功/失败可带结果或错误。"""

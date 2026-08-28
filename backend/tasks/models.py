@@ -26,6 +26,7 @@ class Task:
     payload: dict[str, Any] = field(default_factory=dict)  # 任务内容
     result: dict[str, Any] = field(default_factory=dict)   # 结果
     error: str = ""                  # 失败原因
+    retries: int = 0                 # 已重试次数（worker 失败重试用）
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -37,6 +38,7 @@ class Task:
             "payload": self.payload,
             "result": self.result,
             "error": self.error,
+            "retries": self.retries,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -50,6 +52,7 @@ class Task:
             payload=d.get("payload", {}),
             result=d.get("result", {}),
             error=d.get("error", ""),
+            retries=int(d.get("retries", 0) or 0),
             created_at=d.get("created_at", 0),
             updated_at=d.get("updated_at", 0),
         )

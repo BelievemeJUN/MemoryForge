@@ -42,7 +42,7 @@ class Intent(BaseModel):
 # ===== B：任务队列接入对话（TaskRequest 结构化抽取，_task_node 执行） =====
 TASK_PROMPT = (
     "你是后台任务助手。根据用户最新消息解析意图，只输出 JSON 对象，字段：\n"
-    '- "action": 必填，create（要求后台执行代码/跑任务/批量处理）或 status（查询任务状态）\n'
+    '- "action": 必填，create（要求后台执行代码/跑任务/批量处理）、status（查询单个任务状态）或 list（列出我的任务）\n'
     '- "code": 要后台执行的 Python 代码（action=create 时；从代码块或描述中提取，没有则空串）\n'
     '- "task_id": 要查询的任务号（action=status 时；用户给的任务号，没有则空串）\n'
     "只输出 JSON，不要其他文字。"
@@ -50,7 +50,7 @@ TASK_PROMPT = (
 
 
 class TaskRequest(BaseModel):
-    action: Literal["create", "status"]
+    action: Literal["create", "status", "list"]
     code: str = Field(default="", description="要后台执行的 Python 代码")
     task_id: str = Field(default="", description="要查询的任务号")
     reasoning: str = Field(default="", description="判断理由")
@@ -279,9 +279,26 @@ async def _task_status_text(mgr, task_id: str) -> str:
 
 
 async def _apply_task_request(mgr, req: TaskRequest) -> str:
-    """B：执行解析出的任务请求（create → 入队；status → 查询）。核心逻辑，可单测。"""
+    """B：执行解析出的任务请求（create → 入队；status → 查询；list → 我的任务列表）。
+
+    核心逻辑与 LLM 分离，可单测。
+    """
     if req.action == "status":
         return await _task_status_text(mgr, req.task_id)
+    if req.action == "list":
+        tasks = await mgr.list(limit=10)
+        if not tasks:
+            return "📭 你还没有任务。说「帮我后台跑个任务：<代码>」即可提交。"
+        marks = {
+            "succeeded": "✅", "failed": "❌", "running": "⏳",
+            "queued": "🕐", "cancelled": "⛔",
+        }
+        lines = ["📋 **我的最近任务：**\n"]
+        for t in tasks:
+            lines.append(
+                f"{marks.get(t.status.value, '•')} `{t.id}` · {t.task_type} · **{t.status.value}**"
+            )
+        return "\n".join(lines)
     if not req.code:
         return "⚠️ 没识别到要运行的代码。请用代码块说明，或说「帮我后台跑：<代码>」。"
     task = await mgr.create(task_type="code_exec", payload={"code": req.code})

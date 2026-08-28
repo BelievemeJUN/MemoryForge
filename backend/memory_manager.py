@@ -654,6 +654,74 @@ class MemoryManager:
             logger.warning("删除被替代旧记忆失败（不影响主流程）: %s", e)
             return 0
 
+    async def count_memories(self, user_id: int) -> int:
+        """统计该用户记忆总数（容量上限前置）。"""
+        try:
+            res = await self.client.query(
+                collection_name=self.collection_name,
+                filter=f"user_id == {user_id}",
+                output_fields=["id"],
+                limit=16384,
+            )
+            return len(res)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("统计记忆数失败: %s", e)
+            return 0
+
+    async def list_memories(self, user_id: int, limit: int = 20) -> list:
+        """列出该用户记忆（按最近访问倒序），供「我的记忆」/单条删除用。"""
+        try:
+            res = await self.client.query(
+                collection_name=self.collection_name,
+                filter=f"user_id == {user_id}",
+                output_fields=[
+                    "id", "memory_type", "content", "created_at",
+                    "importance", "last_access_at",
+                ],
+                limit=limit,
+                order_by="last_access_at desc",
+            )
+            return [
+                {
+                    "id": r.get("id"),
+                    "memory_type": r.get("memory_type"),
+                    "content": r.get("content"),
+                    "importance": r.get("importance"),
+                    "last_access_at": r.get("last_access_at"),
+                    "created_at": r.get("created_at"),
+                }
+                for r in res
+            ]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("列出记忆失败: %s", e)
+            return []
+
+    async def prune_to_capacity(self, user_id: int, max_count: int = 200) -> int:
+        """P2 记忆容量上限：超限时删掉最久未访问的，直到 <= max_count（精确 LRU 近似）。
+
+        面试可讲：记忆库只增不减会失控——加"每人最多 N 条"硬上限，
+        超了按 last_access_at 升序删最老（等价 LRU）。配合低频淘汰，双保险。
+        """
+        total = await self.count_memories(user_id)
+        excess = total - max_count
+        if excess <= 0:
+            return 0
+        try:
+            oldest = await self.client.query(
+                collection_name=self.collection_name,
+                filter=f"user_id == {user_id}",
+                output_fields=["id"],
+                limit=excess,
+                order_by="last_access_at asc",
+            )
+            ids = [r["id"] for r in oldest]
+            if not ids:
+                return 0
+            return await self.delete_memories(user_id, ids)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("容量淘汰失败（不影响检索）: %s", e)
+            return 0
+
     async def add_memories_batch(
         self,
         user_id: int,

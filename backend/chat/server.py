@@ -193,11 +193,50 @@ async def delete_my_data(user_id: str = Depends(require_user)):
     return {"status": "deleted", "user_id": user_id, "stats": stats}
 
 
+@app.get("/api/user/data")
+async def export_my_data(user_id: str = Depends(require_user)):
+    """P2 数据合规：导出当前用户全部数据（只能导自己，GDPR 导出权，与删除权对称）。"""
+    from data_governance import export_user_all  # lazy
+
+    uid = int(user_id) if str(user_id).isdigit() else 0
+    data = await export_user_all(uid)
+    logger.info("数据合规: 用户 %s 导出数据 %d 条对话", user_id,
+                len(data.get("postgresql", {}).get("conversations", [])))
+    return data
+
+
 class TaskCreateRequest(BaseModel):
     """B：创建任务请求体。task_type=code_exec 时 payload 需带 code。"""
 
     task_type: str = "code_exec"
     payload: dict = {}
+
+
+class LoginRequest(BaseModel):
+    """JWT 登录请求体。用长期 API Key 换短时动态令牌。"""
+
+    api_key: str
+
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest):
+    """JWT 认证：API Key（长期静态凭证）→ 短时动态令牌。
+
+    面试可讲：静态凭证私藏、动态令牌传输——过期+签名+jti，被盗可吊销。
+    """
+    from auth import _load_api_keys, create_token  # lazy
+
+    uid = _load_api_keys().get(req.api_key)
+    if not uid:
+        raise HTTPException(status_code=401, detail="无效的 API Key")
+    token, expires_in = create_token(uid)
+    logger.info("认证: 用户 %s 登录签发 JWT（%ds）", uid, expires_in)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": expires_in,
+        "user_id": uid,
+    }
 
 
 @app.post("/api/tasks")
@@ -235,6 +274,41 @@ async def list_tasks(user_id: str = Depends(require_user)):
     mgr = TaskManager(user_id=user_id)
     tasks = await mgr.list(limit=20)
     return [t.to_dict() for t in tasks]
+
+
+@app.get("/api/memories")
+async def list_my_memories(limit: int = 20, user_id: str = Depends(require_user)):
+    """记忆管理：列出当前用户记忆（按最近访问倒序）。"""
+    try:
+        from milvus_client import get_milvus_client  # lazy
+
+        mc = await get_milvus_client()
+        uid = int(user_id) if str(user_id).isdigit() else 0
+        items = await mc.list_memories(uid, limit=limit)
+        return {"user_id": user_id, "memories": items, "count": len(items)}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("列出记忆失败: %s", e)
+        return {"user_id": user_id, "memories": [], "count": 0, "error": str(e)}
+
+
+@app.delete("/api/memories/{memory_id}")
+async def delete_my_memory(memory_id: int, user_id: str = Depends(require_user)):
+    """记忆管理：删除单条记忆（只能删自己的，按 user_id 校验）。"""
+    try:
+        from milvus_client import get_milvus_client  # lazy
+
+        mc = await get_milvus_client()
+        uid = int(user_id) if str(user_id).isdigit() else 0
+        n = await mc.delete_memories(uid, [memory_id])
+        if n == 0:
+            raise HTTPException(status_code=404, detail="记忆不存在或不属于你")
+        logger.info("记忆删除: 用户 %s 删记忆 %s", user_id, memory_id)
+        return {"status": "deleted", "memory_id": memory_id, "deleted": n}
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning("删除记忆失败: %s", e)
+        raise HTTPException(status_code=500, detail=f"删除记忆失败: {e}")
 
 
 @app.get("/health")

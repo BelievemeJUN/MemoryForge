@@ -485,7 +485,7 @@ async def process_all_users_conversations(
 
 
 async def run_prune_task(max_age_days: float = 90.0, min_importance: float = 0.3) -> int:
-    """P2：记忆健康维护——遍历有对话记录的用户，淘汰低频低价值记忆。"""
+    """P2：记忆健康维护——遍历有对话记录的用户，淘汰低频低价值记忆 + 容量上限收紧。"""
     try:
         pg_client = await get_postgresql_client()
         if not pg_client.pool:
@@ -496,6 +496,8 @@ async def run_prune_task(max_age_days: float = 90.0, min_importance: float = 0.3
         from milvus_client import get_milvus_client  # lazy
 
         milvus = await get_milvus_client()
+        # P2 记忆容量上限：每人最多 N 条（超了删最久未访问，近似 LRU）
+        max_per_user = int(os.getenv("MEM_MAX_PER_USER", "200"))
         total = 0
         for row in rows:
             total += await milvus.memory_manager.prune_memories(
@@ -503,8 +505,9 @@ async def run_prune_task(max_age_days: float = 90.0, min_importance: float = 0.3
                 max_age_days=max_age_days,
                 min_importance=min_importance,
             )
+            total += await milvus.prune_to_capacity(row["user_id"], max_per_user)
         if total:
-            logger.info("记忆维护: 共淘汰 %d 条低频低价值记忆", total)
+            logger.info("记忆维护: 共淘汰 %d 条（低频低价值 + 超容量）", total)
         return total
     except Exception as e:  # noqa: BLE001
         logger.warning("记忆维护任务失败（不影响对话）: %s", e)

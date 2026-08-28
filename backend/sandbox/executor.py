@@ -256,11 +256,15 @@ class DockerExecutor:
             except Exception:  # noqa: BLE001
                 pass
 
-        # 5. 截断 + 返回
+        # 5. 截断 + 脱敏 + 返回
+        # 脱敏：AI 生成的代码可能打印密钥（sk-xxx/JWT/Bearer 等），统一出口打码。
+        # 评测比对不受影响——评测期望值不会含密钥格式（诚实标注）。
         duration = time.monotonic() - start
+        from redact import redact_secrets  # lazy，轻依赖
+
         return ExecutionResult(
-            stdout=self._truncate(stdout),
-            stderr=self._truncate(stderr),
+            stdout=redact_secrets(self._truncate(stdout)),
+            stderr=redact_secrets(self._truncate(stderr)),
             exit_code=exit_code,
             timed_out=timed_out,
             duration=duration,

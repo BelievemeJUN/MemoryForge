@@ -162,14 +162,16 @@ async def _verify_node(state: ExecState) -> dict[str, Any]:
         from verifier.judge import llm_judge  # lazy
 
         judge_model = build_model(state["task"])
-        passed, reason = await llm_judge(
+        passed, reason, judge_tokens = await llm_judge(
             judge_model, state["task"], state.get("plan", ""),
             state.get("stdout", ""), state.get("stderr", ""),
         )
+        # P2-K：judge 是一次真实 LLM 调用，之前漏算——补进 exec 子图成本（精确账单）
+        tokens = state.get("tokens", 0) + judge_tokens
         logger.info("目标模式 judge: passed=%s (%s)", passed, reason[:60])
         if passed:
             return {
-                "passed": True, "attempts": attempts,
+                "passed": True, "attempts": attempts, "tokens": tokens,
                 "final": (
                     f"✅ 目标完成（第 {attempts} 轮）\n\n"
                     f"**运行输出：**\n```\n{state.get('stdout', '').rstrip()}\n```"
@@ -177,10 +179,10 @@ async def _verify_node(state: ExecState) -> dict[str, Any]:
             }
         if attempts >= max_attempts:
             return {
-                "passed": False, "attempts": attempts,
+                "passed": False, "attempts": attempts, "tokens": tokens,
                 "final": f"❌ 经过 {attempts} 轮仍未完成目标（已熔断）\n\n最后理由：{reason}",
             }
-        return {"passed": False, "attempts": attempts, "feedback": reason}
+        return {"passed": False, "attempts": attempts, "tokens": tokens, "feedback": reason}
 
     # 确定性分类
     if state.get("timed_out"):

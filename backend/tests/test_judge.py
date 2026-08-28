@@ -15,21 +15,22 @@ class _FakeModel:
 @pytest.mark.asyncio
 async def test_judge_parses_passed():
     m = _FakeModel('{"passed": true, "reason": "输出正确"}')
-    passed, reason = await llm_judge(m, "任务", "方案", "stdout", "")
+    passed, reason, tokens = await llm_judge(m, "任务", "方案", "stdout", "")
     assert passed is True and reason == "输出正确"
+    assert tokens == 0  # 假模型无 usage_metadata
 
 
 @pytest.mark.asyncio
 async def test_judge_parses_failed():
     m = _FakeModel('{"passed": false, "reason": "缺少核心逻辑"}')
-    passed, reason = await llm_judge(m, "任务", "", "stdout", "")
+    passed, reason, _ = await llm_judge(m, "任务", "", "stdout", "")
     assert passed is False and "核心" in reason
 
 
 @pytest.mark.asyncio
 async def test_judge_fallback_on_bad_json():
     m = _FakeModel("... 输出 true 表示通过 ...")
-    passed, _ = await llm_judge(m, "任务", "", "", "")
+    passed, _, _ = await llm_judge(m, "任务", "", "", "")
     assert passed is True
 
 
@@ -39,6 +40,6 @@ async def test_judge_exception_safe():
         async def ainvoke(self, messages):
             raise RuntimeError("model down")
 
-    passed, reason = await llm_judge(Boom(), "任务", "", "", "")
+    passed, reason, _ = await llm_judge(Boom(), "任务", "", "", "")
     assert passed is True  # judge 异常保守通过，不阻塞主流程
     assert "judge" in reason

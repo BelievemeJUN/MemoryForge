@@ -30,8 +30,12 @@ async def llm_judge(
     plan: str = "",
     stdout: str = "",
     stderr: str = "",
-) -> tuple[bool, str]:
-    """用评判模型判定目标完成度。返回 (是否通过, 理由)。"""
+) -> tuple[bool, str, int]:
+    """用评判模型判定目标完成度。返回 (是否通过, 理由, 消耗token)。
+
+    第三返回值用于成本精确记账——judge 是一次真实 LLM 调用，之前漏算，
+    导致 exec 子图内部成本"近似"。补上后请求级账单完整。
+    """
     from langchain_core.messages import HumanMessage, SystemMessage
 
     prompt = _JUDGE_PROMPT.format(
@@ -47,13 +51,15 @@ async def llm_judge(
                 HumanMessage(content=prompt),
             ]
         )
+        um = getattr(resp, "usage_metadata", None) or {}
+        tokens = int(um.get("total_tokens") or 0)
         text = resp.content or ""
         m = re.search(r"\{.*\}", text, re.S)
         if m:
             data = json.loads(m.group(0))
-            return bool(data.get("passed")), str(data.get("reason", ""))[:300]
+            return bool(data.get("passed")), str(data.get("reason", ""))[:300], tokens
         # 兜底：没解析出 JSON，用文本里的 true/false 判断
-        return "true" in text.lower(), text[:200]
+        return "true" in text.lower(), text[:200], tokens
     except Exception as e:  # noqa: BLE001
         # judge 失败不阻塞——已有沙箱执行结果，保守视为通过并记日志
-        return True, f"(judge 异常，保守通过: {e})"
+        return True, f"(judge 异常，保守通过: {e})", 0
