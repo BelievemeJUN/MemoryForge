@@ -3,166 +3,394 @@
   kb_id: eval_retrieval_kb
   query: Python 怎么用列表推导式快速生成平方列表
   expected_keyword: 列表推导式
-  top_k: 3
+  target_doc: doc_01
+  top_k: 1
   desc: Python 列表推导式
+  difficulty: easy
 - id: ret_doc_02
   retrieval: true
   kb_id: eval_retrieval_kb
   query: Python 装饰器怎么实现日志功能
   expected_keyword: 装饰器
-  top_k: 3
+  target_doc: doc_02
+  top_k: 1
   desc: Python 装饰器
+  difficulty: easy
 - id: ret_doc_03
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 冒泡排序的时间复杂度是多少
   expected_keyword: O(n^2)
-  top_k: 3
+  target_doc: doc_03
+  top_k: 1
   desc: 冒泡排序
+  difficulty: easy
 - id: ret_doc_04
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 快速排序平均时间复杂度
   expected_keyword: O(n log n)
-  top_k: 3
+  target_doc: doc_04
+  top_k: 1
   desc: 快速排序
+  difficulty: easy
 - id: ret_doc_05
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 有序数组里二分查找的时间复杂度
   expected_keyword: O(log n)
-  top_k: 3
+  target_doc: doc_05
+  top_k: 1
   desc: 二分查找
+  difficulty: easy
 - id: ret_doc_06
   retrieval: true
   kb_id: eval_retrieval_kb
   query: Python 的 dict 底层是什么数据结构
   expected_keyword: 哈希表
-  top_k: 3
+  target_doc: doc_06
+  top_k: 1
   desc: 哈希表
+  difficulty: easy
 - id: ret_doc_07
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 二叉树中序遍历的顺序
   expected_keyword: 左根右
-  top_k: 3
+  target_doc: doc_07
+  top_k: 1
   desc: 二叉树遍历
+  difficulty: easy
 - id: ret_doc_08
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 0-1 背包问题用什么算法
   expected_keyword: 动态规划
-  top_k: 3
+  target_doc: doc_08
+  top_k: 1
   desc: 动态规划
+  difficulty: easy
 - id: ret_doc_09
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 什么数据库适合做缓存和分布式锁
   expected_keyword: Redis
-  top_k: 3
+  target_doc: doc_09
+  top_k: 1
   desc: Redis 缓存
+  difficulty: easy
 - id: ret_doc_10
   retrieval: true
   kb_id: eval_retrieval_kb
   query: PostgreSQL 靠什么机制实现并发控制
   expected_keyword: MVCC
-  top_k: 3
+  target_doc: doc_10
+  top_k: 1
   desc: PostgreSQL 事务
+  difficulty: easy
 - id: ret_doc_11
   retrieval: true
   kb_id: eval_retrieval_kb
   query: RAG 场景用什么数据库做向量召回
   expected_keyword: Milvus
-  top_k: 3
+  target_doc: doc_11
+  top_k: 1
   desc: Milvus 向量检索
+  difficulty: easy
 - id: ret_doc_12
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 用什么技术把应用打包成可隔离运行的镜像
   expected_keyword: Docker
-  top_k: 3
+  target_doc: doc_12
+  top_k: 1
   desc: Docker 容器
+  difficulty: easy
 - id: ret_doc_13
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 容器太多怎么自动调度和管理
   expected_keyword: Kubernetes
-  top_k: 3
+  target_doc: doc_13
+  top_k: 1
   desc: Kubernetes 编排
+  difficulty: easy
 - id: ret_doc_14
   retrieval: true
   kb_id: eval_retrieval_kb
   query: Linux 中 chmod 755 表示什么
   expected_keyword: '755'
-  top_k: 3
+  target_doc: doc_14
+  top_k: 1
   desc: Linux 文件权限
+  difficulty: easy
 - id: ret_doc_15
   retrieval: true
   kb_id: eval_retrieval_kb
   query: HTTP 429 状态码表示什么
   expected_keyword: '429'
-  top_k: 3
+  target_doc: doc_15
+  top_k: 1
   desc: HTTP 状态码
+  difficulty: easy
 - id: ret_doc_16
   retrieval: true
   kb_id: eval_retrieval_kb
   query: RESTful 接口怎么用 HTTP 方法表达增删改查
   expected_keyword: RESTful
-  top_k: 3
+  target_doc: doc_16
+  top_k: 1
   desc: RESTful API
+  difficulty: easy
 - id: ret_doc_17
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 实时推送聊天消息用什么协议
   expected_keyword: WebSocket
-  top_k: 3
+  target_doc: doc_17
+  top_k: 1
   desc: WebSocket
+  difficulty: easy
 - id: ret_doc_18
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 无状态令牌认证用什么标准
   expected_keyword: JWT
-  top_k: 3
+  target_doc: doc_18
+  top_k: 1
   desc: JWT 认证
+  difficulty: easy
 - id: ret_doc_19
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 数据库用什么结构加速查询
   expected_keyword: B+ 树
-  top_k: 3
+  target_doc: doc_19
+  top_k: 1
   desc: SQL 索引
+  difficulty: easy
 - id: ret_doc_20
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 团队协作怎么用 Git 分支管理
   expected_keyword: git flow
-  top_k: 3
+  target_doc: doc_20
+  top_k: 1
   desc: Git 分支策略
+  difficulty: easy
 - id: ret_doc_21
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 差旅报销要在几天内提交
   expected_keyword: 7 个工作日
-  top_k: 3
+  target_doc: doc_21
+  top_k: 1
   desc: 公司报销制度
+  difficulty: easy
 - id: ret_doc_22
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 年假要提前几天申请
   expected_keyword: 3 天
-  top_k: 3
+  target_doc: doc_22
+  top_k: 1
   desc: 员工请假政策
+  difficulty: easy
 - id: ret_doc_23
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 新版本上线前要先经历什么阶段
   expected_keyword: 灰度
-  top_k: 3
+  target_doc: doc_23
+  top_k: 1
   desc: 产品发布流程
+  difficulty: easy
 - id: ret_doc_24
   retrieval: true
   kb_id: eval_retrieval_kb
   query: 重大故障客服要在几分钟内拉应急群
   expected_keyword: 10 分钟
-  top_k: 3
+  target_doc: doc_24
+  top_k: 1
   desc: 客服响应规范
+  difficulty: easy
+- id: ret_hard_1
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: Python 里不知道循环次数时，怎么反复执行直到条件满足
+  expected_keyword: while
+  target_doc: doc_dpy1
+  top_k: 1
+  desc: hard → doc_dpy1
+  difficulty: hard
+- id: ret_hard_2
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 给函数加计时或日志功能，除了硬编码还能用什么机制
+  expected_keyword: 装饰器
+  target_doc: doc_02
+  top_k: 1
+  desc: hard → doc_02
+  difficulty: hard
+- id: ret_hard_3
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 既要稳定又适合大数据量的排序算法选哪个
+  expected_keyword: 归并排序
+  target_doc: doc_ds3
+  top_k: 1
+  desc: hard → doc_ds3
+  difficulty: hard
+- id: ret_hard_4
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 按到达顺序处理任务、不插队的场景用什么数据结构
+  expected_keyword: 队列
+  target_doc: doc_dd3
+  top_k: 1
+  desc: hard → doc_dd3
+  difficulty: hard
+- id: ret_hard_5
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 公司采购多少钱以上必须走招投标流程
+  expected_keyword: 10 万元
+  target_doc: doc_dc4
+  top_k: 1
+  desc: hard → doc_dc4
+  difficulty: hard
+- id: ret_hard_6
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: App 出现重大不兼容更新时版本号该怎么升
+  expected_keyword: 主版本
+  target_doc: doc_dp1
+  top_k: 1
+  desc: hard → doc_dp1
+  difficulty: hard
+- id: ret_hard_7
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 员工电脑数据防泄露最基础的要求是什么
+  expected_keyword: 加密
+  target_doc: doc_dc2
+  top_k: 1
+  desc: hard → doc_dc2
+  difficulty: hard
+- id: ret_hard_8
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 遍历列表里每一个元素最常用的语句是什么
+  expected_keyword: for 循环
+  target_doc: doc_dpy2
+  top_k: 1
+  desc: hard → doc_dpy2
+  difficulty: hard
+- id: ret_hard_9
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 数据没有排序时找一个数最通用的查找方法
+  expected_keyword: 线性查找
+  target_doc: doc_dd1
+  top_k: 1
+  desc: hard → doc_dd1
+  difficulty: hard
+- id: ret_hard_10
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 客服遇到影响核心功能的故障先定为什么级别
+  expected_keyword: P0
+  target_doc: doc_dp2
+  top_k: 1
+  desc: hard → doc_dp2
+  difficulty: hard
+- id: ret_hard_11
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: Python 报错了怎么让程序不崩溃继续往下执行
+  expected_keyword: try/except
+  target_doc: doc_dpy3
+  top_k: 1
+  desc: hard → doc_dpy3
+  difficulty: hard
+- id: ret_hard_12
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 给排序传一个小函数当 key 用哪种写法
+  expected_keyword: lambda
+  target_doc: doc_dpy4
+  top_k: 1
+  desc: hard → doc_dpy4
+  difficulty: hard
+- id: ret_hard_13
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 后进先出、适合括号匹配的是什么结构
+  expected_keyword: 栈
+  target_doc: doc_dd2
+  top_k: 1
+  desc: hard → doc_dd2
+  difficulty: hard
+- id: ret_hard_14
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 新员工入职头两周必须完成什么
+  expected_keyword: 安全培训
+  target_doc: doc_dc3
+  top_k: 1
+  desc: hard → doc_dc3
+  difficulty: hard
+- id: ret_hard_15
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 系统一年故障时间不能超过多少才算达标
+  expected_keyword: 99.9%
+  target_doc: doc_dp3
+  top_k: 1
+  desc: hard → doc_dp3
+  difficulty: hard
+- id: ret_hard_16
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 不能插队、严格按先后顺序处理多个任务用什么结构
+  expected_keyword: 队列
+  target_doc: doc_dd3
+  top_k: 1
+  desc: hard → doc_dd3
+  difficulty: hard
+- id: ret_hard_17
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 除了遍历未知长度的重复执行，条件式写法用什么
+  expected_keyword: while
+  target_doc: doc_dpy1
+  top_k: 1
+  desc: hard → doc_dpy1
+  difficulty: hard
+- id: ret_hard_18
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 代码出异常后想保证某些收尾代码一定执行用哪个关键字
+  expected_keyword: finally
+  target_doc: doc_dpy3
+  top_k: 1
+  desc: hard → doc_dpy3
+  difficulty: hard
+- id: ret_hard_19
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 打补丁版本号对应的是修什么
+  expected_keyword: 修复 bug
+  target_doc: doc_dp1
+  top_k: 1
+  desc: hard → doc_dp1
+  difficulty: hard
+- id: ret_hard_20
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 无序数组里顺序一个个找的方法叫什么
+  expected_keyword: 线性查找
+  target_doc: doc_dd1
+  top_k: 1
+  desc: hard → doc_dd1
+  difficulty: hard

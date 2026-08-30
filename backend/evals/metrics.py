@@ -98,10 +98,14 @@ def compute_case_metrics(results: list[dict]) -> dict:
 
 
 def compute_retrieval_metrics(results: list[dict]) -> dict:
-    """检索级：RAG 知识库召回——query 在 top_k 内是否召回含期望关键词的父块。"""
+    """检索级：RAG 知识库召回（文档级判定 target_doc），并分 easy/hard 难度。"""
     retr = [r for r in results if r.get("is_retrieval")]
+    easy = [r for r in retr if r.get("difficulty") == "easy"]
+    hard = [r for r in retr if r.get("difficulty") == "hard"]
     return {
         "召回率 recall@top_k": _ratio(retr, "passed"),
+        "easy 召回率": _ratio(easy, "passed"),
+        "hard 召回率": _ratio(hard, "passed"),
         "平均召回父块数": {
             "value": round(statistics.mean([r.get("retrieved", 0) for r in retr]), 2) if retr else 0,
             "ci": (), "n": len(retr),

@@ -40,12 +40,17 @@ async def run_case(graph, case: dict) -> dict:
         parent_ids = await mc.hybrid_retrieval_knowledge_base(
             case["query"], case["kb_id"], case.get("top_k", 3), uid
         )
-        texts = await pg.get_parents(parent_ids, case["kb_id"], uid) if parent_ids else []
-        hit = any(case["expected_keyword"] in (t or "") for t in texts)
+        if case.get("target_doc"):
+            # 文档级精确判定：指定父块必须被召回（干扰区分才真实生效）
+            hit = case["target_doc"] in set(parent_ids)
+        else:
+            texts = await pg.get_parents(parent_ids, case["kb_id"], uid) if parent_ids else []
+            hit = any(case["expected_keyword"] in (t or "") for t in texts)
         return {
             "passed": hit,
             "is_retrieval": True,
-            "retrieved": len(texts),
+            "difficulty": case.get("difficulty", "easy"),
+            "retrieved": len(parent_ids),
             "keyword": case.get("expected_keyword", ""),
             "attempts": 1,
             "self_healed": False,
@@ -55,7 +60,7 @@ async def run_case(graph, case: dict) -> dict:
             "timed_out": False,
             "ran_ok": True,
             "blocked": False,
-            "final": f"召回 {len(texts)} 父块, 命中={hit}",
+            "final": f"召回 {len(parent_ids)} 父块, 命中={hit}",
         }
 
     executor = DockerExecutor()
