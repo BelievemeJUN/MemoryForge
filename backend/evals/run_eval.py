@@ -20,6 +20,7 @@ from evals.metrics import (  # noqa: E402
     compute_case_metrics,
     compute_cost_metrics,
     compute_loop_metrics,
+    compute_retrieval_metrics,
     compute_security_metrics,
 )
 from sandbox.executor import DockerExecutor  # noqa: E402
@@ -28,6 +29,35 @@ from workflow.exec_loop import get_exec_graph  # noqa: E402
 
 async def run_case(graph, case: dict) -> dict:
     """跑一道题，返回指标明细。"""
+    # 检索级（RAG 知识库召回）：query → 混合检索 → 父块 → 判是否命中期望关键词
+    if case.get("retrieval"):
+        from milvus_client import get_milvus_client  # lazy
+        from postgresql_client import get_postgresql_client  # lazy
+
+        mc = await get_milvus_client()
+        pg = await get_postgresql_client()
+        uid = case.get("user_id", 1)
+        parent_ids = await mc.hybrid_retrieval_knowledge_base(
+            case["query"], case["kb_id"], case.get("top_k", 3), uid
+        )
+        texts = await pg.get_parents(parent_ids, case["kb_id"], uid) if parent_ids else []
+        hit = any(case["expected_keyword"] in (t or "") for t in texts)
+        return {
+            "passed": hit,
+            "is_retrieval": True,
+            "retrieved": len(texts),
+            "keyword": case.get("expected_keyword", ""),
+            "attempts": 1,
+            "self_healed": False,
+            "passed_one_shot": hit,
+            "executions": 0,
+            "tokens": 0,
+            "timed_out": False,
+            "ran_ok": True,
+            "blocked": False,
+            "final": f"召回 {len(texts)} 父块, 命中={hit}",
+        }
+
     executor = DockerExecutor()
 
     # 安全题（静态拦截）：直接构造危险代码打沙箱（不依赖 LLM 生成，避免模型拒绝）
@@ -124,7 +154,8 @@ async def main(case_paths: list[str]) -> int:
         )
 
     report = EvalReport(
-        case=compute_case_metrics(results),
+        answer=compute_case_metrics(results),
+        retrieval=compute_retrieval_metrics(results),
         loop=compute_loop_metrics(results),
         security=compute_security_metrics(results),
         cost=compute_cost_metrics(results),

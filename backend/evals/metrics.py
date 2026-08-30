@@ -42,10 +42,11 @@ def _ratio(results: list[dict], key: str) -> dict:
 
 @dataclass
 class EvalReport:
-    """评测报告：四层指标聚合。"""
+    """评测报告：五层指标聚合（答案/检索/循环/安全/成本）。"""
 
-    case: dict = field(default_factory=dict)       # 用例级
-    loop: dict = field(default_factory=dict)       # 循环级
+    answer: dict = field(default_factory=dict)     # 答案级（代码题整体正确率）
+    retrieval: dict = field(default_factory=dict)  # 检索级（RAG 知识库召回）
+    loop: dict = field(default_factory=dict)       # 循环级（自愈）
     security: dict = field(default_factory=dict)   # 安全级
     cost: dict = field(default_factory=dict)       # 成本级
 
@@ -55,10 +56,14 @@ class EvalReport:
             return f"| {name} | {d.get('value', '-')}{ci} | {d.get('n', '-')} |\n"
 
         lines = ["# CodeMind 评测报告", ""]
-        lines.append("## 用例级（能不能做对）")
+        lines.append("## 答案级（能不能做对）")
         lines.append("| 指标 | 值 [95%CI] | 样本 |")
         lines.append("|---|---|---|")
-        lines += [row(k, v) for k, v in self.case.items()]
+        lines += [row(k, v) for k, v in self.answer.items()]
+        lines.append("\n## 检索级（RAG 知识库召回）")
+        lines.append("| 指标 | 值 [95%CI] | 样本 |")
+        lines.append("|---|---|---|")
+        lines += [row(k, v) for k, v in self.retrieval.items()]
         lines.append("\n## 循环级（自愈有没有用）")
         lines.append("| 指标 | 值 [95%CI] | 样本 |")
         lines.append("|---|---|---|")
@@ -74,25 +79,45 @@ class EvalReport:
         return "\n".join(lines)
 
 
-# ---------- 四层指标计算 ----------
+# ---------- 五层指标计算 ----------
+
+
+def _code_results(results: list[dict]) -> list[dict]:
+    """只保留代码题（答案/循环级与成本统计用）；过滤检索题与安全题。"""
+    return [r for r in results if not r.get("is_retrieval") and not r.get("is_security")]
+
 
 def compute_case_metrics(results: list[dict]) -> dict:
-    """用例级：通过率 / 运行正确率 / 超时率（安全拦截率在安全级单独统计）。"""
+    """答案级：代码题通过率 / 运行正确率 / 超时率。"""
+    code = _code_results(results)
     return {
-        "通过率": _ratio(results, "passed"),
-        "运行正确率": _ratio(results, "ran_ok"),   # 代码能跑（非编译/语法错误）
-        "超时率": _ratio(results, "timed_out"),
+        "通过率": _ratio(code, "passed"),
+        "运行正确率": _ratio(code, "ran_ok"),   # 代码能跑（非编译/语法错误）
+        "超时率": _ratio(code, "timed_out"),
+    }
+
+
+def compute_retrieval_metrics(results: list[dict]) -> dict:
+    """检索级：RAG 知识库召回——query 在 top_k 内是否召回含期望关键词的父块。"""
+    retr = [r for r in results if r.get("is_retrieval")]
+    return {
+        "召回率 recall@top_k": _ratio(retr, "passed"),
+        "平均召回父块数": {
+            "value": round(statistics.mean([r.get("retrieved", 0) for r in retr]), 2) if retr else 0,
+            "ci": (), "n": len(retr),
+        },
     }
 
 
 def compute_loop_metrics(results: list[dict]) -> dict:
     """循环级：自愈成功率 / 平均重试轮数 / 一次通过率。"""
-    passed = [r for r in results if r.get("passed")]
-    attempts = [r.get("attempts", 1) for r in results]
-    one_shot = [r for r in results if r.get("passed") and r.get("attempts", 1) == 1]
+    code = _code_results(results)
+    passed = [r for r in code if r.get("passed")]
+    attempts = [r.get("attempts", 1) for r in code]
+    one_shot = [r for r in code if r.get("passed") and r.get("attempts", 1) == 1]
     return {
-        "自愈成功率": _ratio(results, "self_healed"),      # 首轮失败但最终通过
-        "一次通过率": _ratio(results, "passed_one_shot"),
+        "自愈成功率": _ratio(code, "self_healed"),      # 首轮失败但最终通过
+        "一次通过率": _ratio(code, "passed_one_shot"),
         "平均尝试轮数": {
             "value": round(statistics.mean(attempts), 2) if attempts else 0,
             "ci": (), "n": len(attempts),
@@ -112,10 +137,11 @@ def compute_security_metrics(results: list[dict]) -> dict:
 
 
 def compute_cost_metrics(results: list[dict]) -> dict:
-    """成本级：总 token / 总执行次数 / 单题平均成本（token）。"""
-    total_tokens = sum(r.get("tokens", 0) for r in results)
-    total_execs = sum(r.get("executions", 0) for r in results)
-    n = len(results)
+    """成本级：总 token / 总执行次数 / 单题平均成本（token，只统计代码题）。"""
+    code = _code_results(results)
+    total_tokens = sum(r.get("tokens", 0) for r in code)
+    total_execs = sum(r.get("executions", 0) for r in code)
+    n = len(code)
     return {
         "总 token": {"value": total_tokens, "ci": (), "n": n},
         "总执行次数": {"value": total_execs, "ci": (), "n": n},

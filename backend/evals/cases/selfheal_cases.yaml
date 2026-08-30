@@ -1,0 +1,72 @@
+- id: heal_factorial
+  task: 计算 10 的阶乘并输出
+  pre_code: "n = 10\ns = 0\nfor i in range(1, n + 1):\n    s += i\nprint(s)"
+  tests:
+  - expected: '3628800'
+    mode: exact
+    desc: 10!
+  max_attempts: 3
+- id: heal_prime_count
+  task: 统计 1 到 100 之间质数的个数并输出
+  pre_code: "cnt = 0\nfor n in range(2, 101):\n    for d in range(2, n):\n       \
+    \ if n % d == 0:\n            cnt += 1\n            break\nprint(cnt)"
+  tests:
+  - expected: '25'
+    mode: exact
+    desc: 质数个数
+  max_attempts: 3
+- id: heal_sum_100
+  task: 计算 1 加到 100 的和并输出
+  pre_code: print(sum(range(1, 100)))
+  tests:
+  - expected: '5050'
+    mode: exact
+    desc: 1..100 和
+  max_attempts: 3
+- id: heal_palindrome
+  task: 判断 'racecar' 是否为回文，输出 True 或 False
+  pre_code: 's = ''racecar''
+
+    print(s[0] == s[-1])'
+  tests:
+  - expected: 'True'
+    mode: exact
+    desc: 回文
+  max_attempts: 3
+- id: heal_max
+  task: 找出列表 [3, 7, 2, 9] 中的最大值并输出
+  pre_code: "a = [3, 7, 2, 9]\nm = a[0]\nfor x in a:\n    if x < m:\n        m = x\n\
+    print(m)"
+  tests:
+  - expected: '9'
+    mode: exact
+    desc: max
+  max_attempts: 3
+- id: heal_unique
+  task: 对列表 [1, 2, 2, 3, 3, 3] 去重并输出
+  pre_code: "a = [1, 2, 2, 3, 3, 3]\nout = []\nfor i in range(len(a)):\n    if i ==\
+    \ 0 or a[i] != a[i - 1]:\n        out.append(a[i])\nprint(out)"
+  tests:
+  - expected: '[1, 2, 3]'
+    mode: fuzzy
+    desc: 去重
+  max_attempts: 3
+- id: heal_gcd
+  task: 计算 48 和 36 的最大公约数并输出
+  pre_code: "def gcd(a, b):\n    while b:\n        a, b = a, a % b\n    return a\n\
+    print(gcd(48, 36))"
+  tests:
+  - expected: '12'
+    mode: exact
+    desc: gcd
+  max_attempts: 3
+- id: heal_reverse
+  task: 反转字符串 'hello' 并输出
+  pre_code: 's = ''hello''
+
+    print(s[0] + s[-1])'
+  tests:
+  - expected: olleh
+    mode: exact
+    desc: 反转
+  max_attempts: 3

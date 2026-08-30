@@ -1,0 +1,168 @@
+- id: ret_doc_01
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: Python 怎么用列表推导式快速生成平方列表
+  expected_keyword: 列表推导式
+  top_k: 3
+  desc: Python 列表推导式
+- id: ret_doc_02
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: Python 装饰器怎么实现日志功能
+  expected_keyword: 装饰器
+  top_k: 3
+  desc: Python 装饰器
+- id: ret_doc_03
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 冒泡排序的时间复杂度是多少
+  expected_keyword: O(n^2)
+  top_k: 3
+  desc: 冒泡排序
+- id: ret_doc_04
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 快速排序平均时间复杂度
+  expected_keyword: O(n log n)
+  top_k: 3
+  desc: 快速排序
+- id: ret_doc_05
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 有序数组里二分查找的时间复杂度
+  expected_keyword: O(log n)
+  top_k: 3
+  desc: 二分查找
+- id: ret_doc_06
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: Python 的 dict 底层是什么数据结构
+  expected_keyword: 哈希表
+  top_k: 3
+  desc: 哈希表
+- id: ret_doc_07
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 二叉树中序遍历的顺序
+  expected_keyword: 左根右
+  top_k: 3
+  desc: 二叉树遍历
+- id: ret_doc_08
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 0-1 背包问题用什么算法
+  expected_keyword: 动态规划
+  top_k: 3
+  desc: 动态规划
+- id: ret_doc_09
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 什么数据库适合做缓存和分布式锁
+  expected_keyword: Redis
+  top_k: 3
+  desc: Redis 缓存
+- id: ret_doc_10
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: PostgreSQL 靠什么机制实现并发控制
+  expected_keyword: MVCC
+  top_k: 3
+  desc: PostgreSQL 事务
+- id: ret_doc_11
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: RAG 场景用什么数据库做向量召回
+  expected_keyword: Milvus
+  top_k: 3
+  desc: Milvus 向量检索
+- id: ret_doc_12
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 用什么技术把应用打包成可隔离运行的镜像
+  expected_keyword: Docker
+  top_k: 3
+  desc: Docker 容器
+- id: ret_doc_13
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 容器太多怎么自动调度和管理
+  expected_keyword: Kubernetes
+  top_k: 3
+  desc: Kubernetes 编排
+- id: ret_doc_14
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: Linux 中 chmod 755 表示什么
+  expected_keyword: '755'
+  top_k: 3
+  desc: Linux 文件权限
+- id: ret_doc_15
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: HTTP 429 状态码表示什么
+  expected_keyword: '429'
+  top_k: 3
+  desc: HTTP 状态码
+- id: ret_doc_16
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: RESTful 接口怎么用 HTTP 方法表达增删改查
+  expected_keyword: RESTful
+  top_k: 3
+  desc: RESTful API
+- id: ret_doc_17
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 实时推送聊天消息用什么协议
+  expected_keyword: WebSocket
+  top_k: 3
+  desc: WebSocket
+- id: ret_doc_18
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 无状态令牌认证用什么标准
+  expected_keyword: JWT
+  top_k: 3
+  desc: JWT 认证
+- id: ret_doc_19
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 数据库用什么结构加速查询
+  expected_keyword: B+ 树
+  top_k: 3
+  desc: SQL 索引
+- id: ret_doc_20
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 团队协作怎么用 Git 分支管理
+  expected_keyword: git flow
+  top_k: 3
+  desc: Git 分支策略
+- id: ret_doc_21
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 差旅报销要在几天内提交
+  expected_keyword: 7 个工作日
+  top_k: 3
+  desc: 公司报销制度
+- id: ret_doc_22
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 年假要提前几天申请
+  expected_keyword: 3 天
+  top_k: 3
+  desc: 员工请假政策
+- id: ret_doc_23
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 新版本上线前要先经历什么阶段
+  expected_keyword: 灰度
+  top_k: 3
+  desc: 产品发布流程
+- id: ret_doc_24
+  retrieval: true
+  kb_id: eval_retrieval_kb
+  query: 重大故障客服要在几分钟内拉应急群
+  expected_keyword: 10 分钟
+  top_k: 3
+  desc: 客服响应规范
