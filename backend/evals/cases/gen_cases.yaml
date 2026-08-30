@@ -1,0 +1,294 @@
+- id: gen_3ed598fa
+  task: 计算从1到20的所有整数的平方和，并输出结果。
+  tests:
+  - expected: '2870'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_ecdc861f
+  task: 计算字符串 'hello world' 中字母 'o' 出现的次数，并输出。
+  tests:
+  - expected: '2'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_fdbabf42
+  task: 将列表 [3, 1, 4, 1, 5, 9, 2, 6] 去重后按升序排序，输出结果列表。
+  tests:
+  - expected: '[1, 2, 3, 4, 5, 6, 9]'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_03b4b758
+  task: 计算从1到50的所有奇数的和，并输出。
+  tests:
+  - expected: '625'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_548beeb2
+  task: 将字符串 'Python' 反转并输出。
+  tests:
+  - expected: nohtyP
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_638c45fb
+  task: 计算两个整数 123 和 456 的乘积，并输出。
+  tests:
+  - expected: '56088'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_06cdfecb
+  task: 找出列表 [10, 20, 30, 40, 50] 中的最大值和最小值，以 'max:..., min:...' 格式输出。
+  tests:
+  - expected: max:50, min:10
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_b3ee61be
+  task: 计算 2 的 20 次方，并输出。
+  tests:
+  - expected: '1048576'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_29ed8988
+  task: 将字符串 'a,b,c,d' 按逗号分割，并输出分割后的列表。
+  tests:
+  - expected: '[''a'', ''b'', ''c'', ''d'']'
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_ec97b821
+  task: 计算 1 到 100 中所有能被 7 整除的数的个数，并输出。
+  tests:
+  - expected: '14'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_86ff5f25
+  task: 将列表 [1, 2, 3, 4, 5] 中每个元素乘以 2，输出新列表。
+  tests:
+  - expected: '[2, 4, 6, 8, 10]'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_38fd0e38
+  task: 计算字符串 'Hello, World!' 中大写字母的个数，并输出。
+  tests:
+  - expected: '2'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_97cfd43f
+  task: 计算 1 到 10 的立方和，并输出。
+  tests:
+  - expected: '3025'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_9c1a63d0
+  task: 将字符串 '   trim me   ' 去除首尾空格后输出。
+  tests:
+  - expected: trim me
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_74faddca
+  task: 计算两个浮点数 3.14 和 2.71 的和，保留两位小数输出。
+  tests:
+  - expected: '5.85'
+    mode: float
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_3ec08233
+  task: 将列表 [5, 2, 8, 1, 9] 按降序排序，输出结果。
+  tests:
+  - expected: '[9, 8, 5, 2, 1]'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_a490f205
+  task: 计算字符串 'abcdef' 的长度，并输出。
+  tests:
+  - expected: '6'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_37f63be8
+  task: 计算 100 以内所有偶数的和，并输出。
+  tests:
+  - expected: '2550'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_0a3268ee
+  task: 将字符串 'hello' 转换为大写并输出。
+  tests:
+  - expected: HELLO
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_f1aa23c0
+  task: 计算 1 到 30 中所有能被 3 或 5 整除的数的和，并输出。
+  tests:
+  - expected: '225'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_857e52ed
+  task: 将列表 [1, 2, 3] 和 [4, 5, 6] 拼接，输出新列表。
+  tests:
+  - expected: '[1, 2, 3, 4, 5, 6]'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_19fab43d
+  task: 计算 7 的阶乘，并输出。
+  tests:
+  - expected: '5040'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_5644ca40
+  task: 将字符串 'python programming' 中每个单词的首字母大写，输出结果字符串。
+  tests:
+  - expected: Python Programming
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_bc552732
+  task: 计算 1 到 100 中所有数字的各位数字之和（例如 123 的各位数字之和为 6），输出总和。
+  tests:
+  - expected: '901'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_b4ee8982
+  task: '将字典 {''a'': 1, ''b'': 2, ''c'': 3} 的键按字母顺序排序，输出键列表。'
+  tests:
+  - expected: '[''a'', ''b'', ''c'']'
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_754be661
+  task: 计算 1 到 20 中所有质数的和，并输出。
+  tests:
+  - expected: '77'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_2b95a452
+  task: 将字符串 'racecar' 判断是否为回文，输出 True 或 False。
+  tests:
+  - expected: 'True'
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_c45f2fd4
+  task: 计算 1 到 10 的乘积（即 10 的阶乘），并输出。
+  tests:
+  - expected: '3628800'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_561b816a
+  task: 将列表 [1, 2, 3, 4, 5] 中的偶数提取出来，输出新列表。
+  tests:
+  - expected: '[2, 4]'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_0bb9c639
+  task: 计算字符串 'hello' 和 'world' 连接后的结果，并输出。
+  tests:
+  - expected: helloworld
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_8ae06769
+  task: 计算 1 到 100 中所有数字的平方和，并输出。
+  tests:
+  - expected: '338350'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_488dff36
+  task: 将字符串 '12345' 转换为整数并加 10，输出结果。
+  tests:
+  - expected: '12355'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_458c9e4a
+  task: 计算列表 [3, 5, 7, 9] 的平均值，保留两位小数输出。
+  tests:
+  - expected: '6.00'
+    mode: float
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_397a0b06
+  task: 将字符串 'a1b2c3' 中的数字字符提取出来，组成新字符串输出。
+  tests:
+  - expected: '123'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_04fc2101
+  task: 计算 1 到 50 中所有能被 4 整除的数的个数，并输出。
+  tests:
+  - expected: '12'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_66f83b26
+  task: 将列表 [1, 2, 3, 4, 5] 反转并输出。
+  tests:
+  - expected: '[5, 4, 3, 2, 1]'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_f6d77f42
+  task: 计算字符串 'Hello World' 中单词的个数（以空格分隔），并输出。
+  tests:
+  - expected: '2'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_7898a701
+  task: 计算 1 到 100 中所有数字的立方和，并输出。
+  tests:
+  - expected: '25502500'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_df07c9aa
+  task: 将字符串 'python' 中的每个字符用 '-' 连接，输出结果。
+  tests:
+  - expected: p-y-t-h-o-n
+    mode: exact
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_6cd3a485
+  task: 计算 1 到 100 中所有能被 3 整除的数的和，并输出。
+  tests:
+  - expected: '1683'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_f6189777
+  task: 将列表 [1, 2, 3, 4, 5] 中的每个元素平方，输出新列表。
+  tests:
+  - expected: '[1, 4, 9, 16, 25]'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3
+- id: gen_01df2a77
+  task: 计算字符串 'abracadabra' 中字符 'a' 出现的次数，并输出。
+  tests:
+  - expected: '5'
+    mode: fuzzy
+    desc: LLM 生成题
+  max_attempts: 3

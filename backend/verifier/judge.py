@@ -53,6 +53,16 @@ async def llm_judge(
         )
         um = getattr(resp, "usage_metadata", None) or {}
         tokens = int(um.get("total_tokens") or 0)
+        if not tokens:
+            rm = getattr(resp, "response_metadata", None) or {}
+            tokens = int((rm.get("token_usage") or {}).get("total_tokens") or 0)
+        # 上报 OTel GenAI 指标（judge 是一次真实 LLM 调用，也计入标准成本链路）
+        try:
+            from usage_metrics import record_llm_usage  # lazy
+
+            record_llm_usage("judge", resp)
+        except Exception:  # noqa: BLE001  指标上报失败不影响判定
+            pass
         text = resp.content or ""
         m = re.search(r"\{.*\}", text, re.S)
         if m:

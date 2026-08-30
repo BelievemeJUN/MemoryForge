@@ -106,11 +106,13 @@ async def run_case(graph, case: dict) -> dict:
     }
 
 
-async def main(cases_path: str) -> int:
+async def main(case_paths: list[str]) -> int:
     graph = get_exec_graph()
-    cases = yaml.safe_load(open(cases_path, encoding="utf-8"))
+    cases = []
+    for p in case_paths:
+        cases.extend(yaml.safe_load(open(p, encoding="utf-8")) or [])
 
-    print(f"=== 评测 {len(cases)} 题 ===")
+    print(f"=== 评测 {len(cases)} 题（{', '.join(p.rsplit('/', 1)[-1] for p in case_paths)}） ===")
     results = []
     for case in cases:
         r = await run_case(graph, case)
@@ -128,7 +130,7 @@ async def main(cases_path: str) -> int:
         cost=compute_cost_metrics(results),
     )
     md = report.to_markdown()
-    out_path = os.path.join(os.path.dirname(cases_path), "report.md")
+    out_path = os.path.join(os.path.dirname(case_paths[0]), "report.md")
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(md)
     print()
@@ -138,5 +140,6 @@ async def main(cases_path: str) -> int:
 
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "cases", "demo_cases.yaml")
-    sys.exit(asyncio.run(main(path)))
+    default = [os.path.join(os.path.dirname(__file__), "cases", "demo_cases.yaml")]
+    paths = sys.argv[1:] if len(sys.argv) > 1 else default
+    sys.exit(asyncio.run(main(paths)))

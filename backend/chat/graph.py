@@ -56,18 +56,15 @@ class TaskRequest(BaseModel):
     reasoning: str = Field(default="", description="判断理由")
 
 
-def _usage_tokens(resp) -> int:
-    """P2-K：从 LLM 响应提取 total_tokens（成本记账）。
+def _usage_tokens(resp, node: str = "llm") -> int:
+    """P2-K：从 LLM 响应提取 total_tokens 并上报 OpenTelemetry GenAI 指标。
 
     DeepSeek 的 usage 在 usage_metadata；结构化输出（Intent 对象）可能在
     response_metadata.token_usage，两层都试。
     """
-    um = getattr(resp, "usage_metadata", None) or {}
-    tokens = int(um.get("total_tokens") or 0)
-    if not tokens:
-        rm = getattr(resp, "response_metadata", None) or {}
-        tokens = int((rm.get("token_usage") or {}).get("total_tokens") or 0)
-    return tokens
+    from usage_metrics import record_llm_usage  # lazy，避免顶层依赖 OTel
+
+    return record_llm_usage(node, resp)
 
 
 # P2 长上下文压缩：消息超过该阈值时保留最近 N 条，删掉早期（保近舍远）
@@ -139,7 +136,7 @@ async def _chat_node(state: ChatState) -> dict[str, Any]:
     response = model.invoke(msgs)
     return {
         "messages": [response],
-        "tokens": state.get("tokens", 0) + _usage_tokens(response),
+        "tokens": state.get("tokens", 0) + _usage_tokens(response, "chat"),
     }
 
 
@@ -155,7 +152,7 @@ def _intent_node(state: ChatState) -> dict[str, Any]:
     logger.info("意图判断: %s (%s)", result.intent, result.reasoning)
     return {
         "intent": result.intent,
-        "tokens": state.get("tokens", 0) + _usage_tokens(result),
+        "tokens": state.get("tokens", 0) + _usage_tokens(result, "intent"),
     }
 
 
@@ -325,7 +322,7 @@ async def _task_node(state: ChatState) -> dict[str, Any]:
     text = await _apply_task_request(mgr, req)
     return {
         "messages": [AIMessage(content=text)],
-        "tokens": state.get("tokens", 0) + _usage_tokens(req),
+        "tokens": state.get("tokens", 0) + _usage_tokens(req, "task"),
     }
 
 

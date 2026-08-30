@@ -1,0 +1,306 @@
+# MemoryForge 核心评测题库（100 题目标：本文件 58 手写 + LLM 补 42）
+# 每题: task(需求) + tests(hidden test，expected/mode/desc) + max_attempts(自愈预算)
+# 自愈题: pre_code(初始错误代码，测 fix 修复能力)；安全题见 security_cases.yaml
+# 说明: 沙箱只读/断网/禁 os/subprocess/socket/eval，题目全部用标准库计算可得。
+
+# ================= 基础与数学 =================
+- id: sum_1_100
+  task: "计算 1 加到 100 的和并输出"
+  tests: [{expected: "5050", mode: exact, desc: "1..100 和"}]
+  max_attempts: 3
+
+- id: factorial_10
+  task: "计算 10 的阶乘并输出"
+  tests: [{expected: "3628800", mode: exact, desc: "10!"}]
+  max_attempts: 3
+
+- id: prime_count_100
+  task: "统计 1 到 100 之间质数的个数并输出"
+  tests: [{expected: "25", mode: exact, desc: "100 内质数个数"}]
+  max_attempts: 3
+
+- id: gcd_48_36
+  task: "计算 48 和 36 的最大公约数并输出"
+  tests: [{expected: "12", mode: exact, desc: "gcd(48,36)"}]
+  max_attempts: 3
+
+- id: lcm_12_18
+  task: "计算 12 和 18 的最小公倍数并输出"
+  tests: [{expected: "36", mode: exact, desc: "lcm(12,18)"}]
+  max_attempts: 3
+
+- id: square_sum_1_10
+  task: "计算 1 到 10 每个数的平方之和并输出"
+  tests: [{expected: "385", mode: exact, desc: "1^2+...+10^2"}]
+  max_attempts: 3
+
+- id: power_2_10
+  task: "计算 2 的 10 次方并输出"
+  tests: [{expected: "1024", mode: exact, desc: "2^10"}]
+  max_attempts: 3
+
+- id: digit_sum_12345
+  task: "计算整数 12345 各位数字之和并输出"
+  tests: [{expected: "15", mode: exact, desc: "1+2+3+4+5"}]
+  max_attempts: 3
+
+- id: reverse_int_12345
+  task: "将整数 12345 倒序输出（54321）"
+  tests: [{expected: "54321", mode: exact, desc: "倒序"}]
+  max_attempts: 3
+
+- id: sum_odd_100
+  task: "计算 1 到 100 之间所有奇数的和并输出"
+  tests: [{expected: "2500", mode: exact, desc: "奇数和"}]
+  max_attempts: 3
+
+- id: product_1_10
+  task: "计算 1 到 10 所有整数乘积并输出"
+  tests: [{expected: "3628800", mode: exact, desc: "1*2*...*10"}]
+  max_attempts: 3
+
+- id: mod_17_5
+  task: "计算 17 除以 5 的余数并输出"
+  tests: [{expected: "2", mode: exact, desc: "17%5"}]
+  max_attempts: 3
+
+- id: abs_neg_9
+  task: "计算 -9 的绝对值并输出"
+  tests: [{expected: "9", mode: exact, desc: "|-9|"}]
+  max_attempts: 3
+
+- id: perfect_28
+  task: "判断 28 是否为完全数（真约数之和等于自身），输出 True 或 False"
+  tests: [{expected: "True", mode: exact, desc: "28 是完全数"}]
+  max_attempts: 3
+
+- id: leap_2000
+  task: "判断 2000 是否为闰年，输出 True 或 False"
+  tests: [{expected: "True", mode: exact, desc: "2000 闰年"}]
+  max_attempts: 3
+
+- id: leap_1900
+  task: "判断 1900 是否为闰年，输出 True 或 False"
+  tests: [{expected: "False", mode: exact, desc: "1900 非闰年"}]
+  max_attempts: 3
+
+- id: sum_3_5_multiples
+  task: "计算 1 到 20 之间所有能被 3 或 5 整除的数之和并输出"
+  tests: [{expected: "98", mode: exact, desc: "3/5 倍数和"}]
+  max_attempts: 3
+
+- id: average_10_40
+  task: "计算列表 [10, 20, 30, 40] 的平均值并输出"
+  tests: [{expected: "25.0", mode: float, desc: "均值"}]
+  max_attempts: 3
+
+- id: celsius_100
+  task: "把 100 摄氏度转成华氏度（公式 C*9/5+32）并输出"
+  tests: [{expected: "212.0", mode: float, desc: "100C→212F"}]
+  max_attempts: 3
+
+- id: area_triangle
+  task: "计算底为 6 高为 4 的三角形面积并输出"
+  tests: [{expected: "12.0", mode: float, desc: "6*4/2"}]
+  max_attempts: 3
+
+# ================= 字符串 =================
+- id: upper_hello
+  task: "把字符串 'hello' 转成大写并输出"
+  tests: [{expected: "HELLO", mode: exact, desc: "大写"}]
+  max_attempts: 3
+
+- id: count_words
+  task: "统计句子 'the quick brown fox' 的单词数并输出"
+  tests: [{expected: "4", mode: exact, desc: "4 个单词"}]
+  max_attempts: 3
+
+- id: remove_spaces
+  task: "去掉字符串 'a b c' 中的所有空格并输出"
+  tests: [{expected: "abc", mode: exact, desc: "去空格"}]
+  max_attempts: 3
+
+- id: char_freq_banana
+  task: "统计 'banana' 中每个字符出现次数，按字符排序输出形如 a:3 b:1 n:2"
+  tests: [{expected: "a:3\nb:1\nn:2", mode: fuzzy, desc: "字符频率"}]
+  max_attempts: 3
+
+- id: is_anagram
+  task: "判断 'listen' 和 'silent' 是否互为字母重排（anagram），输出 True 或 False"
+  tests: [{expected: "True", mode: exact, desc: "anagram"}]
+  max_attempts: 3
+
+- id: longest_word
+  task: "找出句子 'hello world python' 中最长的单词并输出"
+  tests: [{expected: "python", mode: exact, desc: "最长单词"}]
+  max_attempts: 3
+
+- id: count_letters_mixed
+  task: "统计 'Hello123' 中字母（不含数字）的个数并输出"
+  tests: [{expected: "5", mode: exact, desc: "5 个字母"}]
+  max_attempts: 3
+
+- id: join_list_comma
+  task: "用逗号连接列表 ['a', 'b', 'c'] 并输出"
+  tests: [{expected: "a,b,c", mode: exact, desc: "join"}]
+  max_attempts: 3
+
+- id: title_case
+  task: "把 'hello world' 转成标题格式（每个单词首字母大写）并输出"
+  tests: [{expected: "Hello World", mode: exact, desc: "title"}]
+  max_attempts: 3
+
+- id: count_vowels_hello
+  task: "统计 'hello' 中元音字母（a/e/i/o/u）的个数并输出"
+  tests: [{expected: "2", mode: exact, desc: "e,o 两个元音"}]
+  max_attempts: 3
+
+- id: palindrome_racecar
+  task: "判断 'racecar' 是否为回文，输出 True 或 False"
+  tests: [{expected: "True", mode: exact, desc: "回文"}]
+  max_attempts: 3
+
+# ================= 列表与算法 =================
+- id: list_max
+  task: "找出列表 [3, 7, 2, 9, 5] 中的最大值并输出"
+  tests: [{expected: "9", mode: exact, desc: "max"}]
+  max_attempts: 3
+
+- id: list_sum
+  task: "计算列表 [3, 7, 2, 9, 5] 所有元素之和并输出"
+  tests: [{expected: "26", mode: exact, desc: "sum"}]
+  max_attempts: 3
+
+- id: unique_sorted
+  task: "对列表 [1, 2, 2, 3, 3, 3] 去重并排序后输出"
+  tests: [{expected: "[1, 2, 3]", mode: fuzzy, desc: "去重排序"}]
+  max_attempts: 3
+
+- id: count_occ
+  task: "统计数字 2 在列表 [1, 2, 2, 2, 3] 中出现的次数并输出"
+  tests: [{expected: "3", mode: exact, desc: "出现次数"}]
+  max_attempts: 3
+
+- id: second_largest
+  task: "找出列表 [3, 7, 2, 9, 5] 中的第二大值并输出"
+  tests: [{expected: "7", mode: exact, desc: "第二大"}]
+  max_attempts: 3
+
+- id: binary_search_7
+  task: "在有序列表 [1, 3, 5, 7, 9] 中用二分查找数字 7 的索引并输出"
+  tests: [{expected: "3", mode: exact, desc: "索引 3"}]
+  max_attempts: 3
+
+- id: reverse_list
+  task: "反转列表 [1, 2, 3] 并输出"
+  tests: [{expected: "[3, 2, 1]", mode: fuzzy, desc: "反转"}]
+  max_attempts: 3
+
+- id: sort_desc
+  task: "把列表 [3, 1, 4, 1, 5] 按降序排序并输出"
+  tests: [{expected: "[5, 4, 3, 1, 1]", mode: fuzzy, desc: "降序"}]
+  max_attempts: 3
+
+- id: merge_sorted
+  task: "合并两个有序列表 [1, 3, 5] 和 [2, 4, 6] 并输出合并后有序结果"
+  tests: [{expected: "[1, 2, 3, 4, 5, 6]", mode: fuzzy, desc: "合并有序"}]
+  max_attempts: 3
+
+- id: word_freq_top
+  task: "找出句子 'apple banana apple cherry banana apple' 中出现次数最多的单词并输出"
+  tests: [{expected: "apple", mode: exact, desc: "词频最高"}]
+  max_attempts: 3
+
+- id: squares_1_5
+  task: "生成 1 到 5 每个数的平方组成的列表并输出"
+  tests: [{expected: "[1, 4, 9, 16, 25]", mode: fuzzy, desc: "平方列表"}]
+  max_attempts: 3
+
+- id: nested_sum
+  task: "计算嵌套列表 [[1, 2], [3, 4]] 所有元素之和并输出"
+  tests: [{expected: "10", mode: exact, desc: "嵌套求和"}]
+  max_attempts: 3
+
+- id: even_1_20
+  task: "输出 1 到 20 之间所有偶数组成的列表"
+  tests: [{expected: "[2, 4, 6, 8, 10, 12, 14, 16, 18, 20]", mode: fuzzy, desc: "偶数"}]
+  max_attempts: 3
+
+- id: rotate_list_right
+  task: "把列表 [1, 2, 3] 循环右移一位并输出"
+  tests: [{expected: "[3, 1, 2]", mode: fuzzy, desc: "右移"}]
+  max_attempts: 3
+
+- id: matrix_transpose
+  task: "计算矩阵 [[1, 2], [3, 4]] 的转置并输出"
+  tests: [{expected: "[[1, 3], [2, 4]]", mode: fuzzy, desc: "转置"}]
+  max_attempts: 3
+
+- id: fizzbuzz_1_15
+  task: "输出 1 到 15 的 FizzBuzz：3 的倍数输出 Fizz、5 的倍数输出 Buzz、同时输出 FizzBuzz，每行一个"
+  tests: [{expected: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz", mode: fuzzy, desc: "FizzBuzz"}]
+  max_attempts: 3
+
+- id: even_squares_1_10
+  task: "输出 1 到 10 之间偶数的平方组成的列表"
+  tests: [{expected: "[4, 16, 36, 64, 100]", mode: fuzzy, desc: "偶数平方"}]
+  max_attempts: 3
+
+- id: count_positive
+  task: "统计列表 [-1, 2, -3, 4] 中正数的个数并输出"
+  tests: [{expected: "2", mode: exact, desc: "正数个数"}]
+  max_attempts: 3
+
+- id: min_max
+  task: "输出列表 [3, 7, 2, 9] 的最小值和最大值，格式：min max"
+  tests: [{expected: "2 9", mode: exact, desc: "min max"}]
+  max_attempts: 3
+
+# ================= 自愈题（给错误初始代码，测 fix 修复） =================
+- id: heal_factorial
+  task: "计算 10 的阶乘并输出"
+  pre_code: "n = 10\ns = 0\nfor i in range(1, n + 1):\n    s += i\nprint(s)"
+  tests: [{expected: "3628800", mode: exact, desc: "10!"}]
+  max_attempts: 3
+
+- id: heal_prime_count
+  task: "统计 1 到 100 之间质数的个数并输出"
+  pre_code: "cnt = 0\nfor n in range(2, 101):\n    for d in range(2, n):\n        if n % d == 0:\n            cnt += 1\n            break\nprint(cnt)"
+  tests: [{expected: "25", mode: exact, desc: "质数个数"}]
+  max_attempts: 3
+
+- id: heal_sum_100
+  task: "计算 1 加到 100 的和并输出"
+  pre_code: "print(sum(range(1, 100)))"
+  tests: [{expected: "5050", mode: exact, desc: "1..100 和"}]
+  max_attempts: 3
+
+- id: heal_palindrome
+  task: "判断 'racecar' 是否为回文，输出 True 或 False"
+  pre_code: "s = 'racecar'\nprint(s[0] == s[-1])"
+  tests: [{expected: "True", mode: exact, desc: "回文"}]
+  max_attempts: 3
+
+- id: heal_max
+  task: "找出列表 [3, 7, 2, 9] 中的最大值并输出"
+  pre_code: "a = [3, 7, 2, 9]\nm = a[0]\nfor x in a:\n    if x < m:\n        m = x\nprint(m)"
+  tests: [{expected: "9", mode: exact, desc: "max"}]
+  max_attempts: 3
+
+- id: heal_unique
+  task: "对列表 [1, 2, 2, 3, 3, 3] 去重并输出"
+  pre_code: "a = [1, 2, 2, 3, 3, 3]\nout = []\nfor i in range(len(a)):\n    if i == 0 or a[i] != a[i - 1]:\n        out.append(a[i])\nprint(out)"
+  tests: [{expected: "[1, 2, 3]", mode: fuzzy, desc: "去重"}]
+  max_attempts: 3
+
+- id: heal_gcd
+  task: "计算 48 和 36 的最大公约数并输出"
+  pre_code: "def gcd(a, b):\n    while b:\n        a, b = a, a % b\n    return a\nprint(gcd(48, 36))"
+  tests: [{expected: "12", mode: exact, desc: "gcd"}]
+  max_attempts: 3
+
+- id: heal_reverse
+  task: "反转字符串 'hello' 并输出"
+  pre_code: "s = 'hello'\nprint(s[0] + s[-1])"
+  tests: [{expected: "olleh", mode: exact, desc: "反转"}]
+  max_attempts: 3

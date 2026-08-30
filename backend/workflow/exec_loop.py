@@ -22,13 +22,14 @@ from .state import ExecState
 logger = logging.getLogger(__name__)
 
 
-def _usage_tokens(resp) -> int:
-    """从 LLM 响应提取 total_tokens（成本记账用，M5）。
+def _usage_tokens(resp, node: str = "llm") -> int:
+    """从 LLM 响应提取 total_tokens 并上报 OpenTelemetry GenAI 指标（成本可观测）。
 
     DeepSeek 的 usage 在 langchain 的 usage_metadata 属性（不是 response_metadata）。
     """
-    um = getattr(resp, "usage_metadata", None) or {}
-    return int(um.get("total_tokens") or 0)
+    from usage_metrics import record_llm_usage  # lazy，避免顶层依赖 OTel
+
+    return record_llm_usage(node, resp)
 
 PLAN_PROMPT = (
     "你是代码实现规划器。用户想实现一个功能，请给出简短实现方案"
@@ -69,7 +70,7 @@ def _plan_node(state: ExecState) -> dict[str, Any]:
     logger.info("执行子图 plan: %s", resp.content[:80])
     return {
         "plan": resp.content,
-        "tokens": state.get("tokens", 0) + _usage_tokens(resp),
+        "tokens": state.get("tokens", 0) + _usage_tokens(resp, "plan"),
     }
 
 
@@ -87,7 +88,7 @@ def _write_node(state: ExecState) -> dict[str, Any]:
         task=state["task"], plan=state["plan"], prefs=prefs_block
     )
     resp = model.invoke([HumanMessage(content=prompt)])
-    return {"code": resp.content, "tokens": state.get("tokens", 0) + _usage_tokens(resp)}
+    return {"code": resp.content, "tokens": state.get("tokens", 0) + _usage_tokens(resp, "write")}
 
 
 def _execute_node(state: ExecState) -> dict[str, Any]:
@@ -247,7 +248,7 @@ def _fix_node(state: ExecState) -> dict[str, Any]:
     return {
         "code": resp.content,
         "attempts": state.get("attempts", 1) + 1,
-        "tokens": state.get("tokens", 0) + _usage_tokens(resp),
+        "tokens": state.get("tokens", 0) + _usage_tokens(resp, "fix"),
     }
 
 
