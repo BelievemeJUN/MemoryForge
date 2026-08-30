@@ -88,10 +88,16 @@ def _code_results(results: list[dict]) -> list[dict]:
 
 
 def compute_case_metrics(results: list[dict]) -> dict:
-    """答案级：代码题通过率 / 运行正确率 / 超时率。"""
+    """答案级：代码题通过率，并按 easy/medium/hard 三档分层。"""
     code = _code_results(results)
+    easy = [r for r in code if r.get("difficulty") == "easy"]
+    medium = [r for r in code if r.get("difficulty") == "medium"]
+    hard = [r for r in code if r.get("difficulty") == "hard"]
     return {
         "通过率": _ratio(code, "passed"),
+        "easy 通过率": _ratio(easy, "passed"),
+        "medium 通过率": _ratio(medium, "passed"),
+        "hard 通过率": _ratio(hard, "passed"),
         "运行正确率": _ratio(code, "ran_ok"),   # 代码能跑（非编译/语法错误）
         "超时率": _ratio(code, "timed_out"),
     }

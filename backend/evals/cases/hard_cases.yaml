@@ -1,0 +1,127 @@
+# MemoryForge 答案级 hard 题（动态规划 / 回溯 / 贪心 / 双指针 / 滑动窗口 / 字符串 / 数学）
+# 期望值全部人工核对，用标准库可跑出；每道带 difficulty=hard
+- id: h_fib_30
+  task: "用动态规划计算斐波那契数列第 30 项（f(0)=0, f(1)=1）并输出"
+  tests: [{expected: "832040", mode: exact, desc: "fib(30)"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_climb_stairs_10
+  task: "爬楼梯每次可以爬 1 或 2 阶，计算爬到第 10 阶共有多少种方法并输出"
+  tests: [{expected: "89", mode: exact, desc: "f(10)=89"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_coin_change
+  task: "用硬币面值 [1, 2, 5] 凑出金额 11，输出所需的最少硬币个数"
+  tests: [{expected: "3", mode: exact, desc: "5+5+1"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_knapsack
+  task: "0-1 背包：物品重量 [2,3,4,5]、价值 [3,4,5,6]，背包容量 5，输出能装的最大总价值"
+  tests: [{expected: "7", mode: exact, desc: "重2+重3 价值7"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_lcs_abcde_ace
+  task: "计算字符串 'abcde' 和 'ace' 的最长公共子序列长度并输出"
+  tests: [{expected: "3", mode: exact, desc: "ace"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_lcs_bdcaba
+  task: "计算字符串 'abcbdab' 和 'bdcaba' 的最长公共子序列长度并输出"
+  tests: [{expected: "4", mode: exact, desc: "LCS=4"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_edit_distance
+  task: "计算把字符串 'horse' 变成 'ros' 的最小编辑距离（增/删/改各算 1 步）并输出"
+  tests: [{expected: "3", mode: exact, desc: "horse→ros 距离3"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_palindrome_substrings
+  task: "统计字符串 'abc' 有多少个回文子串（单个字符也算）并输出"
+  tests: [{expected: "3", mode: exact, desc: "a,b,c 三个"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_longest_palindrome
+  task: "找出字符串 'babad' 的最长回文子串的长度并输出"
+  tests: [{expected: "3", mode: exact, desc: "bab/aba 长3"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_subsets
+  task: "输出集合 [1, 2, 3] 的所有子集个数（含空集和自身）"
+  tests: [{expected: "8", mode: exact, desc: "2^3=8"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_combinations
+  task: "从数字 1 到 5 中选出 3 个的不同组合有多少种并输出"
+  tests: [{expected: "10", mode: exact, desc: "C(5,3)=10"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_permutations
+  task: "输出 [1, 2, 3] 的全排列个数"
+  tests: [{expected: "6", mode: exact, desc: "3!=6"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_nqueens_8
+  task: "输出 8 皇后问题有多少种互不攻击的摆法（每行每列每对角线最多一个皇后）"
+  tests: [{expected: "92", mode: exact, desc: "8皇后 92 解"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_buy_sell_stock
+  task: "股票价格 [7,1,5,3,6,4]，只能买卖一次，输出最大利润"
+  tests: [{expected: "5", mode: exact, desc: "1买6卖=5"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_jump_game
+  task: "数组 [2,3,1,1,4] 每个位置表示最多能跳多远，判断能否跳到末尾，输出 True 或 False"
+  tests: [{expected: "True", mode: exact, desc: "可达"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_two_sum
+  task: "在 [2,7,11,15] 中找出两个和为 9 的元素的下标并输出（输出 [a,b]）"
+  tests: [{expected: "[0, 1]", mode: fuzzy, desc: "2+7"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_max_subarray
+  task: "求数组 [-2,1,-3,4,-1,2,1,-5,4] 的最大连续子数组和并输出"
+  tests: [{expected: "6", mode: exact, desc: "4-1+2+1=6"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_sliding_window_max
+  task: "对数组 [1,3,-1,-3,5,3,6,7] 用大小为 3 的滑动窗口，输出每个窗口的最大值组成的列表"
+  tests: [{expected: "[3, 3, 5, 5, 6, 7]", mode: fuzzy, desc: "窗口最大值"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_merge_intervals
+  task: "合并重叠区间 [[1,3],[2,6],[8,10],[15,18]]，输出合并后的区间列表"
+  tests: [{expected: "[[1, 6], [8, 10], [15, 18]]", mode: fuzzy, desc: "合并"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_group_anagrams
+  task: "把 ['eat','tea','tan','ate','nat','bat'] 按字母重排分组，输出分组的组数"
+  tests: [{expected: "3", mode: exact, desc: "3 组"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_int_to_roman
+  task: "把整数 1994 转成罗马数字并输出"
+  tests: [{expected: "MCMXCIV", mode: exact, desc: "1994"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_is_valid_parentheses
+  task: "判断括号串 '()[]{}' 是否有效（括号正确闭合匹配），输出 True 或 False"
+  tests: [{expected: "True", mode: exact, desc: "有效"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_remove_duplicates
+  task: "对已排序数组 [0,0,1,1,1,2,2,3,3,4] 原地去重，输出去重后不同元素个数"
+  tests: [{expected: "5", mode: exact, desc: "0,1,2,3,4"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_count_islands
+  task: "二维网格 [[1,1,0,0,0],[1,1,0,0,0],[0,0,1,0,0],[0,0,0,1,1]] 中 1 代表陆地，上下左右相邻算同一岛屿，输出岛屿个数"
+  tests: [{expected: "3", mode: exact, desc: "3 个岛"}]
+  max_attempts: 3
+  difficulty: hard
+- id: h_trap_rain_water
+  task: "柱子高度 [0,1,0,2,1,0,1,3,2,1,2,1]，计算能接多少单位雨水并输出"
+  tests: [{expected: "6", mode: exact, desc: "接雨水 6"}]
+  max_attempts: 3
+  difficulty: hard

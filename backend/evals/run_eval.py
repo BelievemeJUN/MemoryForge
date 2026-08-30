@@ -125,6 +125,7 @@ async def run_case(graph, case: dict) -> dict:
     attempts = result.get("attempts", 1)
     return {
         "passed": passed,
+        "difficulty": case.get("difficulty", "easy"),
         "blocked": False,
         "is_security": False,
         "is_static": False,
