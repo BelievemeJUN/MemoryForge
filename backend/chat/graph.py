@@ -31,7 +31,8 @@ INTENT_PROMPT = (
     '  - task: 要求后台执行/排队跑/批量任务/异步处理，或查询后台任务状态（任务号）\n'
     '- "memory": 记忆检索配置对象，字段 use_memory(bool)、summary(0-1)、semantic(0-5)、episodic(0-5)、procedural(0-5)\n'
     "  记忆配置规则（按本条消息需要什么记忆给配额，0=不需要，越需要越大）：\n"
-    "  - 闲聊/寒暄/一次性问答/不需要回忆 → use_memory=false\n"
+    "  - 纯问候/寒暄（无实质内容，如你好）→ use_memory=false（用户画像已由系统注入，无需向量召回）\n"
+    "  - 闲聊但涉及近况/背景/偏好（如最近怎么样/上次那个还在做吗）→ summary 1 + semantic 1-2\n"
     "  - 普通对话/需理解用户背景 → semantic 2-3；涉及长期任务可加 summary 1\n"
     "  - 事实/知识/偏好问题 → semantic 3-4\n"
     "  - 回忆历史（之前/上次/当时…）→ episodic 3-4\n"
@@ -46,8 +47,9 @@ INTENT_PROMPT = (
 class MemoryProfile(BaseModel):
     """记忆检索配置：意图判断一并产出——本条消息需要哪种记忆、各几条。
 
-    面试可讲：记忆注入从「场景→固定 k 的硬编码」升级为「意图→按 query 语义给配额」，
-    闲聊直接 use_memory=false 省一次向量检索；方法/流程问题会带出 procedural。
+    设计要点：向量检索召回的是「与当前 query 语义相近」的记忆条目；而
+    用户画像这类浓缩偏好是常驻通道（系统注入，不走向量检索），所以寒暄
+    类消息 use_memory=false 并不等于“失忆”——画像仍在上下文里。
     """
 
     use_memory: bool = True
@@ -152,7 +154,8 @@ def _resolve_memory_profile(result: Any, intent: str) -> dict:
 async def _retrieve_memories(user_id: str, query: str, profile: dict) -> list[dict]:
     """按意图给出的记忆配置检索，返回 [{"type", "content"}, ...]（固定类型顺序）。
 
-    use_memory=false → 不检索（闲聊省一次向量检索）；Milvus 不可用降级空列表。
+    use_memory=false → 不做向量检索（纯问候无实质 query，画像已走常驻注入，
+    向量召回该 query 语义相近条目收益低）；Milvus 不可用降级空列表。
     """
     if not profile.get("use_memory", True):
         return []
@@ -179,25 +182,58 @@ async def _retrieve_memories(user_id: str, query: str, profile: dict) -> list[di
         return []
 
 
+async def _get_user_profile(user_id: str) -> str:
+    """拉取用户画像（PG users.user_profile，Redis 缓存 1h 防频繁读库）。
+
+    画像 = 跨会话沉淀的浓缩偏好（“用户喜欢简洁、正在准备 AI 面试”），
+    它不应靠“当前 query 向量召回”（寒暄 query 无语义召回差），而应作为
+    每次对话的常驻上下文——这才是“闲聊也能了解用户偏好”的正确通道。
+    PG/Redis 不可用或无画像 → 返回空串（不阻塞对话）。
+    """
+    if not str(user_id).isdigit():
+        return ""
+    try:
+        from postgresql_client import get_postgresql_client  # lazy
+
+        pg = await get_postgresql_client()
+        profile = await pg.get_user_profile(int(user_id))
+        return (profile or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 async def _chat_node(state: ChatState) -> dict[str, Any]:
-    """LLM 回复节点：历史（+ P2 记忆注入）→ 模型 → assistant 消息。
+    """LLM 回复节点：画像（常驻）→ 记忆注入（可选）→ 历史 → 模型 → assistant。
 
     关键点：state["messages"] 里已含历史（add_messages 累积），所以模型
     能看到多轮上下文——这就是最简单的「短期记忆」。
-    P2-K：普通对话也查记忆（全场景个性化）；本节点也记账 token（之前漏算）。
+    画像入图（治本）：寒暄/闲聊也能了解用户偏好，不依赖向量检索召回；
+    P2-K：本节点记账 token（之前漏算）。
     """
     profile = state.get("memory") or _default_memory_profile("chat")
     items = await _retrieve_memories(
         state.get("user_id", ""), state["messages"][-1].content, profile
     )
     model = build_chat_model()
-    msgs = state["messages"]
+    sys_blocks: list[SystemMessage] = []
+
+    user_profile = await _get_user_profile(state.get("user_id", ""))
+    if user_profile:
+        sys_blocks.append(
+            SystemMessage(
+                content="用户画像（个性化参考：了解用户背景与偏好风格，不要直接复述，回答要贴合其偏好）：\n"
+                + user_profile[:600]
+            )
+        )
     if items:
         memories = "\n".join(i["content"] for i in items)[:800]
-        sys = SystemMessage(
-            content="以下是该用户的历史记忆（辅助理解用户，不要直接复述）：\n" + memories
+        sys_blocks.append(
+            SystemMessage(
+                content="以下是该用户的历史记忆（辅助理解用户，不要直接复述）：\n" + memories
+            )
         )
-        msgs = [sys, *msgs]
+
+    msgs = [*sys_blocks, *state["messages"]] if sys_blocks else state["messages"]
     response = model.invoke(msgs)
     return {
         "messages": [response],
@@ -208,8 +244,9 @@ async def _chat_node(state: ChatState) -> dict[str, Any]:
 def _intent_node(state: ChatState) -> dict[str, Any]:
     """M2-3 意图判断节点：路由意图 + 记忆检索配置一并产出，写入 state。
 
-    面试可讲：一次结构化输出同时解决「去哪个节点」和「需要哪些记忆支撑」——
-    避免每个场景硬编码记忆 k 值；闲聊还能 use_memory=false 跳过向量检索省成本。
+    一次结构化输出同时解决「去哪个节点」和「需要向量召回哪些记忆」——
+    避免每个场景硬编码记忆 k 值。寒暄类 use_memory=false 不是“失忆”：
+    用户画像走常驻注入通道（_chat_node 里拉 PG），不依赖向量检索。
     模型偶发漏填/乱填 memory 时，_resolve_memory_profile 钳制 + 硬编码兜底。
     """
     model = build_chat_model().with_structured_output(Intent, method="json_mode")
