@@ -9,7 +9,7 @@ import os
 from typing import Any, Literal
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import RemoveMessage
 from pydantic import BaseModel, Field
@@ -186,9 +186,29 @@ def _format_exec_result(r: dict) -> str:
     return "\n".join(lines)
 
 
-async def _retrieve_user_prefs(user_id: str, task: str) -> str:
-    """P0-1b：检索用户的程序性记忆（编码偏好），用于个性化代码生成。
+def _build_history_context(messages: list) -> str:
+    """从对话历史提取「用户此前的需求描述」，拼进写码任务，避免前文需求丢失。
 
+    场景：用户可能先花几轮描述需求（爬什么、存 CSV、要限速），最后才说"帮我写代码"——
+    若只把最新一条当 task，前文需求全丢。这里取最新指令之前的最近 N 条用户消息
+    作为历史上下文，exec 写码时一并可见。无历史/不可用返回空串。
+    """
+    history = [m for m in messages[:-1] if isinstance(m, HumanMessage)]
+    recent = history[-6:]
+    if not recent:
+        return ""
+    lines = "\n".join(
+        f"- {str(m.content).strip()}" for m in recent if getattr(m, "content", None)
+    )
+    return f"用户在此前的对话中描述过以下需求/背景（写代码时须一并满足）：\n{lines}"
+
+
+async def _retrieve_code_context(user_id: str, task: str) -> str:
+    """写码前检索与该任务相关的三类记忆（不止程序记忆）。
+
+    旧实现只查 procedural（编码习惯），会漏掉：语义记忆里"用户对该类代码的具体要求/偏好"
+    （如爬虫必须存 CSV）与情节记忆里"过往同类任务的细节"。这里以完整任务为 query
+    同时检索 semantic / episodic / procedural，拼接注入写码提示词。
     Milvus 不可用/无记忆时降级为空字符串（不阻塞写代码）。
     """
     try:
@@ -197,14 +217,19 @@ async def _retrieve_user_prefs(user_id: str, task: str) -> str:
         mc = await get_milvus_client()
         uid = int(user_id) if str(user_id).isdigit() else 1
         memories = await mc.hybrid_retrieval_memories(
-            task, user_id=uid, summary_k=0, semantic_k=0, episodic_k=0, procedural_k=3
+            task, user_id=uid, summary_k=0, semantic_k=3, episodic_k=2, procedural_k=3
         )
-        prefs = [
-            m["content"]
-            for m in memories.get("procedural", [])[:3]
-            if isinstance(m, dict) and m.get("content")
-        ]
-        return "\n".join(prefs)
+        labels = {
+            "semantic": "该用户对这类任务的相关事实/偏好",
+            "episodic": "过往同类任务",
+            "procedural": "编码习惯",
+        }
+        parts = []
+        for mtype, label in labels.items():
+            for m in memories.get(mtype, [])[:3]:
+                if isinstance(m, dict) and m.get("content"):
+                    parts.append(f"[{label}] {m['content']}")
+        return "\n".join(parts)
     except Exception:  # noqa: BLE001
         return ""
 
@@ -232,16 +257,18 @@ async def _exec_node(state: ChatState) -> dict[str, Any]:
     """
     from workflow.exec_loop import get_exec_graph  # lazy，避免顶层互相依赖
 
-    task = state["messages"][-1].content
-    prefs = await _retrieve_user_prefs(state.get("user_id", ""), task)
+    latest = state["messages"][-1].content          # 最新指令（目标模式判定用）
+    context = _build_history_context(state["messages"])  # 此前的需求描述（写码一并可见）
+    full_task = f"{context}\n\n【本次指令】{latest}" if context else latest
+    prefs = await _retrieve_code_context(state.get("user_id", ""), full_task)
     result = await get_exec_graph().ainvoke(
         {
-            "task": task,
+            "task": full_task,                       # 完整任务：历史需求 + 最新指令
             "prefs": prefs,
             "tests": [],
             "max_attempts": 3,
             "user_id": state.get("user_id", ""),  # P0-A-2：透传用户供配额解析
-            "goal_mode": _is_goal_task(task),     # P2：目标型任务 → judge 验证
+            "goal_mode": _is_goal_task(latest),     # P2：目标判定仍看最新指令
         }
     )
     reply = result.get("final") or _format_exec_result(result)
