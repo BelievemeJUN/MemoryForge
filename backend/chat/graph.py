@@ -352,10 +352,13 @@ async def _exec_node(state: ChatState) -> dict[str, Any]:
     profile = state.get("memory") or _default_memory_profile("code")
     items = await _retrieve_memories(state.get("user_id", ""), full_task, profile)
     prefs = _format_code_context(items)
+    # 用户画像也喂给写码/修复：写码不是对着陌生人写（风格/注释语言/背景偏好）
+    profile_text = await _get_user_profile(state.get("user_id", ""))
     result = await get_exec_graph().ainvoke(
         {
             "task": full_task,                       # 完整任务：历史需求 + 最新指令
             "prefs": prefs,
+            "profile": profile_text,
             "tests": [],
             "max_attempts": 3,
             "user_id": state.get("user_id", ""),  # P0-A-2：透传用户供配额解析

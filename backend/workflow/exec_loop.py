@@ -42,6 +42,7 @@ WRITE_PROMPT = (
     "2. 代码要能独立运行（不依赖未提供的文件/网络）\n"
     "3. 不要使用被禁止的模块（subprocess/socket/os.system/shutil 等）\n"
     "4. 关键逻辑加中文注释\n"
+    "{profile}"
     "\n需求：{task}\n方案：{plan}"
     "{prefs}"
 )
@@ -53,6 +54,7 @@ FIX_PROMPT = (
     "1. 只输出修复后的完整 Python 代码，不要解释、不要 markdown 代码块标记\n"
     "2. 注意错误类型：超时可能是死循环/复杂度过高；运行错误要看 traceback\n"
     "3. 不要使用被禁止的模块（subprocess/socket/os.system/shutil 等）\n"
+    "{profile}"
     "\n需求：{task}\n上一版代码：\n{code}\n测试失败信息：\n{feedback}"
 )
 
@@ -77,15 +79,22 @@ def _plan_node(state: ExecState) -> dict[str, Any]:
 def _write_node(state: ExecState) -> dict[str, Any]:
     """写码：LLM 根据方案生成完整 Python 代码。
 
-    P0-1b：若检索到用户编码偏好（程序性记忆），注入提示词做个性化。
+    P0-1b：若检索到用户编码偏好（程序性记忆）+ 用户画像，注入提示词做个性化——
+    写码不是对着陌生人写：画像决定整体风格（注释语言/详尽度），偏好给编码习惯。
     P2 模型路由：按复杂度选模型。
     """
     model = build_model(state["task"])
     prefs_block = ""
     if state.get("prefs"):
         prefs_block = f"\n\n用户编码偏好（请尽量遵循）：\n{state['prefs']}"
+    profile_block = ""
+    if state.get("profile"):
+        profile_block = f"\n\n用户画像（写码风格参考，贴合其背景与偏好）：\n{state['profile']}"
     prompt = WRITE_PROMPT.format(
-        task=state["task"], plan=state["plan"], prefs=prefs_block
+        task=state["task"],
+        plan=state["plan"],
+        prefs=prefs_block,
+        profile=profile_block,
     )
     resp = model.invoke([HumanMessage(content=prompt)])
     return {"code": resp.content, "tokens": state.get("tokens", 0) + _usage_tokens(resp, "write")}
@@ -238,11 +247,18 @@ def _fix_node(state: ExecState) -> dict[str, Any]:
 
     硬计数：attempts 由状态机控制并加 1，超过预算在 verify 熔断——
     不依赖 LLM 自觉（deepresearch 教训：软约束会被无视）。
+    画像同样注入：修复也要保持用户风格一致，不中途“换个人”写。
     P2 模型路由：按复杂度选模型。
     """
     model = build_model(state["task"])
+    profile_block = ""
+    if state.get("profile"):
+        profile_block = f"\n\n用户画像（修复时保持用户风格）：\n{state['profile']}"
     prompt = FIX_PROMPT.format(
-        task=state["task"], code=state["code"], feedback=state["feedback"]
+        task=state["task"],
+        code=state["code"],
+        feedback=state["feedback"],
+        profile=profile_block,
     )
     resp = model.invoke([HumanMessage(content=prompt)])
     return {

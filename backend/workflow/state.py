@@ -27,6 +27,7 @@ class ExecState(TypedDict, total=False):
     tokens: int             # 累计消耗的 LLM token（plan/write/fix 各节点累加）
     # ---- P0-1b 记忆个性化 ----
     prefs: str              # 用户程序性记忆（编码偏好），由 chat 图检索后传入
+    profile: str            # 用户画像（跨会话浓缩偏好/风格），由 chat 图注入
     # ---- P0-A-2 多租户 ----
     user_id: str            # 请求用户（由 chat 图从认证上下文传入，用于解析配额）
     # ---- P2 目标模式（LLM-as-judge 验证）----
