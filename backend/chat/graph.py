@@ -20,7 +20,7 @@ from .state import ChatState
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-# ===== M2-3 意图判断 =====
+# ===== M2-3 意图判断（路由 + 记忆配置联合决策） =====
 INTENT_PROMPT = (
     "你是意图分类器。根据用户最新一条消息判断意图，只输出 JSON 对象，字段：\n"
     '- "intent": 必填，取值为 chat / code / kb / memory / task 之一\n'
@@ -29,13 +29,39 @@ INTENT_PROMPT = (
     "  - kb: 想查知识库/内部文档/资料\n"
     "  - memory: 想回忆之前对话/个人偏好/习惯\n"
     '  - task: 要求后台执行/排队跑/批量任务/异步处理，或查询后台任务状态（任务号）\n'
+    '- "memory": 记忆检索配置对象，字段 use_memory(bool)、summary(0-1)、semantic(0-5)、episodic(0-5)、procedural(0-5)\n'
+    "  记忆配置规则（按本条消息需要什么记忆给配额，0=不需要，越需要越大）：\n"
+    "  - 闲聊/寒暄/一次性问答/不需要回忆 → use_memory=false\n"
+    "  - 普通对话/需理解用户背景 → semantic 2-3；涉及长期任务可加 summary 1\n"
+    "  - 事实/知识/偏好问题 → semantic 3-4\n"
+    "  - 回忆历史（之前/上次/当时…）→ episodic 3-4\n"
+    "  - 方法/流程/怎么做 → procedural 3-4（可加 semantic 2）\n"
+    "  - code 写代码 → semantic 3 + episodic 2 + procedural 3（写码需用户习惯+同类任务）\n"
+    '  - kb/task 场景通常 use_memory=false（知识库/后台任务不依赖个人记忆）\n'
     '- "reasoning": 判断理由，一句话\n'
     "只输出 JSON，不要其他文字。"
 )
 
 
+class MemoryProfile(BaseModel):
+    """记忆检索配置：意图判断一并产出——本条消息需要哪种记忆、各几条。
+
+    面试可讲：记忆注入从「场景→固定 k 的硬编码」升级为「意图→按 query 语义给配额」，
+    闲聊直接 use_memory=false 省一次向量检索；方法/流程问题会带出 procedural。
+    """
+
+    use_memory: bool = True
+    summary: int = 0      # 0-1
+    semantic: int = 0     # 0-5
+    episodic: int = 0     # 0-5
+    procedural: int = 0   # 0-5
+
+
 class Intent(BaseModel):
     intent: Literal["chat", "code", "kb", "memory", "task"]
+    memory: MemoryProfile = Field(
+        default_factory=MemoryProfile, description="记忆检索配置"
+    )
     reasoning: str = Field(description="判断理由")
 
 
@@ -92,28 +118,65 @@ async def _compress_node(state: ChatState) -> dict[str, Any]:
     return {"messages": removes}
 
 
-async def _retrieve_chat_memories(user_id: str, query: str) -> str:
-    """P2：普通对话也注入长期记忆（摘要/语义/情节）。
+def _clamp_k(v: Any, lo: int = 0, hi: int = 5) -> int:
+    """把记忆配额钳制到 [lo, hi]；非数字/越界归 0 或边界（防模型乱填）。"""
+    try:
+        return max(lo, min(int(v), hi))
+    except (TypeError, ValueError):
+        return lo
 
-    之前记忆只在 exec（程序记忆）和 read（记忆意图）生效，普通闲聊不查——
-    这里补上：让「长期记忆」在对话主链路真正生效，不再只等用户主动问。
+
+def _default_memory_profile(intent: str) -> dict:
+    """LLM 记忆配置缺失/解析失败时的硬编码兜底（按场景）。"""
+    if intent == "code":
+        return {"use_memory": True, "summary": 0, "semantic": 3, "episodic": 2, "procedural": 3}
+    if intent == "memory":
+        return {"use_memory": True, "summary": 1, "semantic": 3, "episodic": 3, "procedural": 2}
+    return {"use_memory": True, "summary": 1, "semantic": 3, "episodic": 3, "procedural": 0}
+
+
+def _resolve_memory_profile(result: Any, intent: str) -> dict:
+    """把 LLM 输出的 MemoryProfile 解析并钳制到合法范围；结构缺失/异常 → 硬编码兜底。"""
+    m = getattr(result, "memory", None)
+    if not isinstance(m, MemoryProfile):
+        return _default_memory_profile(intent)
+    return {
+        "use_memory": bool(getattr(m, "use_memory", True)),
+        "summary": _clamp_k(getattr(m, "summary", 0), 0, 1),
+        "semantic": _clamp_k(getattr(m, "semantic", 0)),
+        "episodic": _clamp_k(getattr(m, "episodic", 0)),
+        "procedural": _clamp_k(getattr(m, "procedural", 0)),
+    }
+
+
+async def _retrieve_memories(user_id: str, query: str, profile: dict) -> list[dict]:
+    """按意图给出的记忆配置检索，返回 [{"type", "content"}, ...]（固定类型顺序）。
+
+    use_memory=false → 不检索（闲聊省一次向量检索）；Milvus 不可用降级空列表。
     """
+    if not profile.get("use_memory", True):
+        return []
     try:
         from milvus_client import get_milvus_client  # lazy
 
         mc = await get_milvus_client()
         uid = int(user_id) if str(user_id).isdigit() else 1
         memories = await mc.hybrid_retrieval_memories(
-            query, user_id=uid, summary_k=1, semantic_k=3, episodic_k=3, procedural_k=0
+            query, user_id=uid,
+            summary_k=_clamp_k(profile.get("summary", 0), 0, 1),
+            semantic_k=_clamp_k(profile.get("semantic", 0)),
+            episodic_k=_clamp_k(profile.get("episodic", 0)),
+            procedural_k=_clamp_k(profile.get("procedural", 0)),
         )
-        parts = []
-        for mtype in ("summary", "semantic", "episodic"):
-            for m in memories.get(mtype, [])[:3]:
+        out = []
+        for mtype in ("summary", "semantic", "episodic", "procedural"):
+            want = _clamp_k(profile.get(mtype, 0))
+            for m in memories.get(mtype, [])[:want]:
                 if isinstance(m, dict) and m.get("content"):
-                    parts.append(m["content"])
-        return "\n".join(parts)[:800]
+                    out.append({"type": mtype, "content": m["content"]})
+        return out
     except Exception:  # noqa: BLE001
-        return ""
+        return []
 
 
 async def _chat_node(state: ChatState) -> dict[str, Any]:
@@ -123,12 +186,14 @@ async def _chat_node(state: ChatState) -> dict[str, Any]:
     能看到多轮上下文——这就是最简单的「短期记忆」。
     P2-K：普通对话也查记忆（全场景个性化）；本节点也记账 token（之前漏算）。
     """
-    memories = await _retrieve_chat_memories(
-        state.get("user_id", ""), state["messages"][-1].content
+    profile = state.get("memory") or _default_memory_profile("chat")
+    items = await _retrieve_memories(
+        state.get("user_id", ""), state["messages"][-1].content, profile
     )
     model = build_chat_model()
     msgs = state["messages"]
-    if memories:
+    if items:
+        memories = "\n".join(i["content"] for i in items)[:800]
         sys = SystemMessage(
             content="以下是该用户的历史记忆（辅助理解用户，不要直接复述）：\n" + memories
         )
@@ -141,17 +206,20 @@ async def _chat_node(state: ChatState) -> dict[str, Any]:
 
 
 def _intent_node(state: ChatState) -> dict[str, Any]:
-    """M2-3 意图判断节点：用 LLM 结构化输出判断用户意图，写入 state。
+    """M2-3 意图判断节点：路由意图 + 记忆检索配置一并产出，写入 state。
 
-    面试可讲：比起关键词匹配，用 with_structured_output 让模型返回
-    结构化 JSON（intent + reasoning），意图判断更鲁棒、可解释。
+    面试可讲：一次结构化输出同时解决「去哪个节点」和「需要哪些记忆支撑」——
+    避免每个场景硬编码记忆 k 值；闲聊还能 use_memory=false 跳过向量检索省成本。
+    模型偶发漏填/乱填 memory 时，_resolve_memory_profile 钳制 + 硬编码兜底。
     """
     model = build_chat_model().with_structured_output(Intent, method="json_mode")
     latest = state["messages"][-1]
     result = model.invoke([SystemMessage(content=INTENT_PROMPT), latest])
-    logger.info("意图判断: %s (%s)", result.intent, result.reasoning)
+    memory = _resolve_memory_profile(result, result.intent)
+    logger.info("意图判断: %s memory=%s (%s)", result.intent, memory, result.reasoning)
     return {
         "intent": result.intent,
+        "memory": memory,
         "tokens": state.get("tokens", 0) + _usage_tokens(result, "intent"),
     }
 
@@ -203,35 +271,19 @@ def _build_history_context(messages: list) -> str:
     return f"用户在此前的对话中描述过以下需求/背景（写代码时须一并满足）：\n{lines}"
 
 
-async def _retrieve_code_context(user_id: str, task: str) -> str:
-    """写码前检索与该任务相关的三类记忆（不止程序记忆）。
+_CODE_LABELS = {
+    "summary": "对话总纲",
+    "semantic": "该用户对这类任务的相关事实/偏好",
+    "episodic": "过往同类任务",
+    "procedural": "编码习惯",
+}
 
-    旧实现只查 procedural（编码习惯），会漏掉：语义记忆里"用户对该类代码的具体要求/偏好"
-    （如爬虫必须存 CSV）与情节记忆里"过往同类任务的细节"。这里以完整任务为 query
-    同时检索 semantic / episodic / procedural，拼接注入写码提示词。
-    Milvus 不可用/无记忆时降级为空字符串（不阻塞写代码）。
-    """
-    try:
-        from milvus_client import get_milvus_client  # lazy
 
-        mc = await get_milvus_client()
-        uid = int(user_id) if str(user_id).isdigit() else 1
-        memories = await mc.hybrid_retrieval_memories(
-            task, user_id=uid, summary_k=0, semantic_k=3, episodic_k=2, procedural_k=3
-        )
-        labels = {
-            "semantic": "该用户对这类任务的相关事实/偏好",
-            "episodic": "过往同类任务",
-            "procedural": "编码习惯",
-        }
-        parts = []
-        for mtype, label in labels.items():
-            for m in memories.get(mtype, [])[:3]:
-                if isinstance(m, dict) and m.get("content"):
-                    parts.append(f"[{label}] {m['content']}")
-        return "\n".join(parts)
-    except Exception:  # noqa: BLE001
-        return ""
+def _format_code_context(items: list[dict]) -> str:
+    """把检索到的记忆格式化为给写码提示词的 prefs（带类型标注，便于模型区分用途）。"""
+    return "\n".join(
+        f"[{_CODE_LABELS.get(i['type'], i['type'])}] {i['content']}" for i in items
+    )
 
 
 def _is_goal_task(task: str) -> bool:
@@ -260,7 +312,9 @@ async def _exec_node(state: ChatState) -> dict[str, Any]:
     latest = state["messages"][-1].content          # 最新指令（目标模式判定用）
     context = _build_history_context(state["messages"])  # 此前的需求描述（写码一并可见）
     full_task = f"{context}\n\n【本次指令】{latest}" if context else latest
-    prefs = await _retrieve_code_context(state.get("user_id", ""), full_task)
+    profile = state.get("memory") or _default_memory_profile("code")
+    items = await _retrieve_memories(state.get("user_id", ""), full_task, profile)
+    prefs = _format_code_context(items)
     result = await get_exec_graph().ainvoke(
         {
             "task": full_task,                       # 完整任务：历史需求 + 最新指令

@@ -25,4 +25,5 @@ class ChatState(TypedDict, total=False):
     thread_id: str
     knowledge_base_id: str
     intent: str  # M2-3 意图判断结果（chat/code/kb/memory/task）
+    memory: dict  # 意图判断产出的记忆检索配置（use_memory/summary/semantic/episodic/procedural）
     tokens: int  # P2-K：请求级 token 记账（intent/chat/exec 各节点累加）
