@@ -24,6 +24,34 @@ logger = logging.getLogger(__name__)
 TOKEN_THRESHOLD = 4000  # P2 修正：原 1000 太敏感（稍长对话就触发 LLM 提取烧钱），注释却写 10000，不一致。4000 兼顾提取及时性与成本
 MEMORY_EXTRACT_PROMPT = config.MEMORY_EXTRACT_PROMPT
 USER_PROFILE_MERGE_PROMPT = config.USER_PROFILE_MERGE_PROMPT
+USER_PROFILE_ONLY_PROMPT = config.USER_PROFILE_ONLY_PROMPT
+
+# A：显式偏好转折信号词——命中即豁免 TOKEN_THRESHOLD，触发"仅画像"低阈值更新。
+# 关键洞察：风格转折常藏在一两句短消息里，攒不够 4000 token 就永远不触发压缩，
+# 画像会长期滞后。这些词是"用户主动声明偏好变化"的高信号。
+PREFERENCE_SHIFT_KEYWORDS = (
+    "以后", "从今往后", "接下来都", "都改成", "改成", "改用", "换成",
+    "都别", "别再", "不要再", "不要再用", "别用", "别",
+    "请记住", "记住", "我一直", "我不喜欢", "我习惯", "每次都要",
+    "请你以后", "从现在起", "以后不要", "偏好",
+)
+
+
+def has_preference_shift(messages: List[Dict[str, Any]]) -> bool:
+    """检测这批消息里是否有「用户显式声明偏好/习惯变化」的句子（纯规则，不调 LLM）。
+
+    A 方向的入口判断：命中 → 即使未达 4000 token 也做一次轻量画像更新。
+    误报成本低（多一次短 LLM 调用），因为最终画像是否真变由 LLM 判断（无则不动）。
+    """
+    user_roles = {"user", "human"}  # 真实库以 human/ai 存（chat/server.py）；测试常用 user/assistant
+    for m in messages:
+        if str(m.get("role", "")).lower() not in user_roles:
+            continue
+        text = str(m.get("content", ""))
+        for kw in PREFERENCE_SHIFT_KEYWORDS:
+            if kw in text:
+                return True
+    return False
 
 
 async def extract_memories(
@@ -178,6 +206,18 @@ async def extract_and_append_memory(
     total_tokens = count_tokens_approximately([HumanMessage(content=conversation_text)])
 
     if total_tokens <= TOKEN_THRESHOLD:
+        # A：显式偏好转折（如“以后都用中文注释”）豁免 4000 门槛 → 仅画像低阈值更新。
+        # 否则风格转折藏在短会话里攒不够阈值就永远不触发压缩，画像长期滞后。
+        if has_preference_shift(messages):
+            try:
+                result = await _profile_only_update(messages, model, user_id, thread_id)
+                result["token_count"] = total_tokens
+                result["message_count"] = len(messages)
+                result["low_threshold_trigger"] = True
+                return result
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"偏好句低阈值画像更新失败: {e}", exc_info=True)
+                # 失败降级回原 skip（不阻塞压缩任务）
         return {
             "success": False,
             "reason": f"token 数未超过阈值 ({total_tokens} <= {TOKEN_THRESHOLD})",
@@ -218,6 +258,80 @@ async def extract_and_append_memory(
             "token_count": total_tokens,
             "message_count": len(messages),
         }
+
+
+async def _profile_only_update(
+    messages: List[Dict[str, Any]], model: BaseChatModel, user_id: int, thread_id: str
+) -> Dict[str, Any]:
+    """A：仅画像的低阈值更新——不写 Milvus 记忆、不生成摘要，只提炼并 merge 画像。
+
+    触发：消息总量 < 4000 token，但用户显式声明偏好转折（has_preference_shift 命中）。
+    轻量一次 LLM 调用提炼画像增量 → merge 进 PG 画像 → 打 summary_id（防重复处理）。
+    提炼为空 → 不改任何东西（诚实：模型判断这批没有新偏好）。
+    """
+    pg_client = await get_postgresql_client()
+
+    conversation_text = "\n\n".join(
+        f"{m.get('role')}: {m.get('content')}" for m in messages
+    )
+    resp = await model.ainvoke(
+        [
+            HumanMessage(
+                content=USER_PROFILE_ONLY_PROMPT.format(messages=conversation_text)
+            )
+        ]
+    )
+    new_profile = (resp.content or "").strip()
+    if not new_profile:
+        return {"success": False, "reason": "未识别到明确偏好转折（画像不变）"}
+
+    summary_id = str(uuid.uuid4())
+    update_message_ids = [str(msg["id"]) for msg in messages if msg.get("id")]
+
+    old_user_profile = await pg_client.get_user_profile(user_id)
+    if old_user_profile:
+        merged = await model.ainvoke(
+            [
+                HumanMessage(
+                    content=USER_PROFILE_MERGE_PROMPT.format(
+                        old_user_profile=old_user_profile,
+                        new_user_profile=new_profile,
+                    )
+                )
+            ]
+        )
+        new_profile = (merged.content or "").strip()
+
+    try:
+        # 先标记这批已处理（防整批再提取重复），再更新画像；画像失败则回滚标记
+        mark_ok = True
+        if update_message_ids:
+            mark_ok = await pg_client.update_messages_with_summary_id(
+                update_message_ids, summary_id
+            )
+        if not mark_ok:
+            return {"success": False, "reason": "summary_id 更新失败"}
+        ok = await pg_client.update_user_profile(user_id, new_profile)
+        if not ok:
+            if update_message_ids:
+                await pg_client.update_messages_with_summary_id(
+                    update_message_ids, None
+                )
+            return {"success": False, "reason": "画像更新失败，已回滚标记"}
+        logger.info(
+            "A 低阈值画像更新 user=%s thread=%s new=%s",
+            user_id, thread_id, new_profile[:60],
+        )
+        return {
+            "success": True,
+            "reason": f"低阈值画像更新成功 (profile_only, {len(messages)} 条)",
+            "user_profile": new_profile,
+            "mode": "profile_only",
+            "filtered_message_ids": [],
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"画像更新异常: {e}", exc_info=True)
+        return {"success": False, "reason": f"画像更新异常: {e}"}
 
 
 async def _store_memories(
