@@ -19,6 +19,7 @@ from .state import ChatState
 
 logger = logging.getLogger(__name__)
 load_dotenv()
+import config  # noqa: E402  画像优先级裁决文案（backend 根，sys.path 运行时已含）
 
 # ===== M2-3 意图判断（路由 + 记忆配置联合决策） =====
 INTENT_PROMPT = (
@@ -221,8 +222,7 @@ async def _chat_node(state: ChatState) -> dict[str, Any]:
     if user_profile:
         sys_blocks.append(
             SystemMessage(
-                content="用户画像（用户最新稳定画像；若与历史记忆冲突，一律以画像为准——旧记忆视为已过时；不要直接复述，回答贴合其偏好）：\n"
-                + user_profile[:600]
+                content=config.USER_PREFERENCE_PRIORITY + user_profile[:600]
             )
         )
     if items:

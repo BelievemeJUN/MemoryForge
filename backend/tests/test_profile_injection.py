@@ -57,5 +57,6 @@ async def test_chat_node_injects_profile_as_first_system(monkeypatch):
     msgs = captured["msgs"]
     assert isinstance(msgs[0], SystemMessage)
     assert "正在准备 AI 应用开发面试" in msgs[0].content  # 画像在最前
+    assert "以画像为准" in msgs[0].content or "一律以本画像为准" in msgs[0].content  # 优先级裁决规则注入
     assert any(isinstance(m, HumanMessage) for m in msgs)  # 历史仍保留
     assert out["messages"][-1].content == "记得你！你在准备面试～"
