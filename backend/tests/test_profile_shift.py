@@ -87,31 +87,20 @@ def _make_msgs(texts):
 
 @pytest.mark.asyncio
 async def test_low_threshold_with_shift_updates_profile(monkeypatch):
-    """未达阈值 + 显式转折 → 提炼画像并 merge 进 PG；新画像同步写 semantic 记忆库，
-    且对库中几乎同义(≥0.95)的旧偏好条目以新替旧删除（画像与语义记忆一致化）。"""
+    """未达阈值 + 显式转折 → 提炼画像并 merge 进 PG。
+
+    架构决策：稳定偏好唯一归 user_profile，不再写回 semantic 库（避免自造重复）——
+    因此本路径不应触发任何 Milvus 调用。
+    """
     import auto_store_memory_from_psql as m
 
     pg = FakePG(old_profile="用户偏好英文注释。")
     monkeypatch.setattr(m, "get_postgresql_client", lambda: _await(pg))
 
-    class FakeMilvus:
-        def __init__(self):
-            self.added = None
-            self.superseded = []
+    async def _boom(*a, **k):
+        raise AssertionError("偏好只归画像，不应触发 Milvus 写回")
 
-        async def resolve_conflicts(self, filtered_memory, user_id):
-            return {"memory": filtered_memory, "supersede_ids": ["old_mem_1"]}
-
-        async def add_memories_batch(self, **kw):
-            self.added = kw
-            return True
-
-        async def delete_memories(self, user_id, ids):
-            self.superseded = ids
-            return len(ids)
-
-    mc = FakeMilvus()
-    monkeypatch.setattr(m, "get_milvus_client", lambda: _await(mc))
+    monkeypatch.setattr(m, "get_milvus_client", _boom)  # 若被调用会失败
 
     model = FakeModel("用户现在偏好中文注释。", "用户偏好中文注释。")
     messages = _make_msgs(["以后注释都改成中文的吧，谢谢"])
@@ -124,10 +113,6 @@ async def test_low_threshold_with_shift_updates_profile(monkeypatch):
     assert pg.updated_profile == "用户偏好中文注释。"
     assert pg.summary_written is not None  # 打 summary_id 防重复
     assert model.calls == 2  # 提炼 + merge
-    # 数据级同步：新画像作为 semantic 写入检索库，旧同义条目以新替旧删除
-    assert mc.added["memory_dict"]["semantic_memory"][0]["content"] == "用户偏好中文注释。"
-    assert mc.added["summary_id"] == pg.summary_written
-    assert mc.superseded == ["old_mem_1"]
 
 
 @pytest.mark.asyncio
