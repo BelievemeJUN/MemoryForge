@@ -89,7 +89,7 @@ def _write_node(state: ExecState) -> dict[str, Any]:
         prefs_block = f"\n\n用户编码偏好（请尽量遵循）：\n{state['prefs']}"
     profile_block = ""
     if state.get("profile"):
-        profile_block = f"\n\n用户画像（写码风格参考，贴合其背景与偏好）：\n{state['profile']}"
+        profile_block = f"\n\n用户画像（最新稳定偏好，写码风格参考；若与检索到的历史记忆冲突，以画像为准）：\n{state['profile']}"
     prompt = WRITE_PROMPT.format(
         task=state["task"],
         plan=state["plan"],
@@ -253,7 +253,7 @@ def _fix_node(state: ExecState) -> dict[str, Any]:
     model = build_model(state["task"])
     profile_block = ""
     if state.get("profile"):
-        profile_block = f"\n\n用户画像（修复时保持用户风格）：\n{state['profile']}"
+        profile_block = f"\n\n用户画像（最新稳定偏好，修复时保持用户风格；与历史记忆冲突以画像为准）：\n{state['profile']}"
     prompt = FIX_PROMPT.format(
         task=state["task"],
         code=state["code"],

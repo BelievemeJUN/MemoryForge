@@ -221,7 +221,7 @@ async def _chat_node(state: ChatState) -> dict[str, Any]:
     if user_profile:
         sys_blocks.append(
             SystemMessage(
-                content="用户画像（个性化参考：了解用户背景与偏好风格，不要直接复述，回答要贴合其偏好）：\n"
+                content="用户画像（用户最新稳定画像；若与历史记忆冲突，一律以画像为准——旧记忆视为已过时；不要直接复述，回答贴合其偏好）：\n"
                 + user_profile[:600]
             )
         )
@@ -473,11 +473,24 @@ def _format_memories(memories: dict) -> str:
     return "\n".join(lines)
 
 
-async def _read_node(state: ChatState) -> dict[str, Any]:
-    """M2-3 后半：根据意图检索知识库/记忆，把结果拼成回复。
+# 画像/记忆与检索事实的冲突裁决（read 用）：事实永远是唯一权威来源，画像只改风格不改事实
+READ_GENERATE_SYSTEM = (
+    "你是检索问答助手。请根据【检索到的事实/记忆内容】回答用户。\n"
+    "规则：\n"
+    "1. 事实以【检索到的事实/记忆内容】为唯一来源：可整理排版，但不得遗漏、增删或改写其含义。\n"
+    "2. 用户画像/历史偏好若与检索内容冲突，一律以检索内容为准（画像只用于让表达贴合用户，不是事实来源）。\n"
+    "3. 内容简洁、结构化、准确。\n"
+)
 
-    面试可讲：read 是 async 节点——检索要调 Milvus/PostgreSQL 的 async
-    接口，LangGraph 支持 sync/async 混合节点，图整体用 ainvoke 驱动。
+
+async def _read_node(state: ChatState) -> dict[str, Any]:
+    """read 节点：检索事实为主，画像注入保证表达贴合用户风格（事实仍优先）。
+
+    升级点：
+    - memory 意图的检索配额改吃意图给的 profile（不再是硬编码 1/3/3/2）；
+    - 检索到内容后由 LLM 组织成贴合用户偏好的回复（注入画像 + READ_GENERATE_SYSTEM
+      强约束：检索到的事实是唯一事实来源，画像不得覆盖事实）；
+    - 检索为空 → 直接返回提示，不调 LLM（省钱）。
     """
     intent = state.get("intent", "kb")
     query = state["messages"][-1].content
@@ -488,32 +501,61 @@ async def _read_node(state: ChatState) -> dict[str, Any]:
 
         milvus = await get_milvus_client()
         if intent == "memory":
+            profile = state.get("memory") or _default_memory_profile("memory")
             memories = await milvus.hybrid_retrieval_memories(
                 query,
                 user_id=user_id,
-                summary_k=1,
-                semantic_k=3,
-                episodic_k=3,
-                procedural_k=2,
+                summary_k=_clamp_k(profile.get("summary", 1), 0, 1),
+                semantic_k=_clamp_k(profile.get("semantic", 3)),
+                episodic_k=_clamp_k(profile.get("episodic", 3)),
+                procedural_k=_clamp_k(profile.get("procedural", 2)),
             )
-            text = _format_memories(memories)
+            facts = _format_memories(memories)
         else:
             kb_id = state.get("knowledge_base_id") or "默认知识库"
             parent_ids = await milvus.hybrid_retrieval_knowledge_base(
                 query, knowledge_base_id=kb_id, top_k=3, user_id=user_id
             )
             if not parent_ids:
-                text = "知识库中未检索到相关内容（可能知识库为空或没有相关文档）。"
-            else:
-                pg = await get_postgresql_client()
-                parents = await pg.get_parents(
-                    knowledge_base_id=kb_id, parent_ids=parent_ids, user_id=user_id
-                )
-                text = _format_parents(parents)
+                return {
+                    "messages": [
+                        AIMessage(
+                            content="知识库中未检索到相关内容（可能知识库为空或没有相关文档）。"
+                        )
+                    ]
+                }
+            pg = await get_postgresql_client()
+            parents = await pg.get_parents(
+                knowledge_base_id=kb_id, parent_ids=parent_ids, user_id=user_id
+            )
+            facts = _format_parents(parents)
     except Exception as e:  # noqa: BLE001
         logger.exception("读工具节点检索失败")
-        text = f"❌ 检索失败：{e}"
-    return {"messages": [AIMessage(content=text)]}
+        return {"messages": [AIMessage(content=f"❌ 检索失败：{e}")]}
+
+    if "未检索到" in facts:
+        # 检索为空 → 直接展示，不调 LLM 组织（省钱）
+        return {"messages": [AIMessage(content=facts)]}
+
+    # 检索到内容 → 注入画像 + 事实权威约束，LLM 组织个性化回复（事实优先）
+    user_profile = await _get_user_profile(str(user_id))
+    model = build_chat_model()
+    sys_blocks: list[SystemMessage] = [SystemMessage(content=READ_GENERATE_SYSTEM)]
+    if user_profile:
+        sys_blocks.append(
+            SystemMessage(
+                content="用户画像（仅用于让表达贴合用户偏好；与检索内容冲突时以检索内容为准）：\n"
+                + user_profile[:600]
+            )
+        )
+    sys_blocks.append(
+        SystemMessage(content="【检索到的事实/记忆内容（唯一事实来源）】\n" + facts)
+    )
+    resp = model.invoke([*sys_blocks, HumanMessage(content=query)])
+    return {
+        "messages": [AIMessage(content=resp.content)],
+        "tokens": state.get("tokens", 0) + _usage_tokens(resp, "read"),
+    }
 
 
 def build_graph(checkpointer=None):

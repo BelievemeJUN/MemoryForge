@@ -322,6 +322,31 @@ async def _profile_only_update(
             "A 低阈值画像更新 user=%s thread=%s new=%s",
             user_id, thread_id, new_profile[:60],
         )
+        # 画像 vs 语义记忆一致性（数据级）：新画像作为 semantic 写进检索库，并触发
+        # resolve_conflicts 对库中几乎同义(≥0.95)的旧偏好条目"以新替旧"删除——
+        # 否则画像已改但 Milvus 仍召回旧偏好，检索端与画像打架。失败仅降级日志。
+        try:
+            mc = await get_milvus_client()
+            payload = {
+                "semantic_memory": [
+                    {"content": new_profile, "importance_score": 0.9}
+                ]
+            }
+            conflict = await mc.resolve_conflicts(
+                filtered_memory=payload, user_id=user_id
+            )
+            sid = conflict.get("supersede_ids", [])
+            added = await mc.add_memories_batch(
+                user_id=user_id,
+                thread_id=thread_id,
+                memory_dict=payload,
+                summary_id=summary_id,
+            )
+            if sid:
+                await mc.delete_memories(user_id, sid)
+            logger.info("画像同步为语义记忆: add=%s supersede=%d", added, len(sid))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("画像→语义记忆同步失败（不影响画像更新）: %s", e)
         return {
             "success": True,
             "reason": f"低阈值画像更新成功 (profile_only, {len(messages)} 条)",
